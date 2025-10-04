@@ -1,6 +1,9 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { LogIn } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Button } from '@/components/ui/button';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -26,55 +29,65 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-gray-900 rounded-lg p-8 shadow-xl">
-        <h2 className="text-3xl font-bold text-white mb-6 text-center">Login</h2>
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-md w-full bg-card rounded-2xl p-8 shadow-lg border border-border"
+      >
+        <div className="flex items-center justify-center mb-6">
+          <div className="p-3 bg-primary/10 rounded-2xl">
+            <LogIn className="w-8 h-8 text-primary" />
+          </div>
+        </div>
+        <h2 className="text-3xl font-bold text-foreground mb-6 text-center">Welcome Back</h2>
         
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500 text-red-500 rounded-lg">
+          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-xl text-sm">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-gray-300 mb-2">Username</label>
+            <label className="block text-foreground font-medium mb-2 text-sm">Username</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-3 bg-background text-foreground rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary transition"
               required
             />
           </div>
 
           <div>
-            <label className="block text-gray-300 mb-2">Password</label>
+            <label className="block text-foreground font-medium mb-2 text-sm">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-3 bg-background text-foreground rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary transition"
               required
             />
           </div>
 
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50"
+            className="w-full rounded-xl bg-foreground text-background hover:bg-foreground/90"
+            size="lg"
           >
             {loading ? 'Logging in...' : 'Login'}
-          </button>
+          </Button>
         </form>
 
-        <p className="mt-4 text-center text-gray-400">
+        <p className="mt-6 text-center text-muted-foreground text-sm">
           Don't have an account?{' '}
-          <Link to="/register" className="text-blue-500 hover:text-blue-400">
+          <Link to="/register" className="text-primary hover:underline font-medium">
             Sign up
           </Link>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 };

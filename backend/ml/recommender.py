@@ -8,6 +8,19 @@ from collections import defaultdict
 class MovieRecommender:
     def __init__(self, db: Session):
         self.db = db
+    
+    def _get_excluded_movie_ids(self, user_id: int):
+        """Get set of movie IDs to exclude from recommendations"""
+        excluded_ids = set()
+        
+        # Exclude movies rated 2 stars or less
+        low_ratings = self.db.query(Rating.movie_id).filter(
+            Rating.user_id == user_id,
+            Rating.rating <= 2.0
+        ).all()
+        excluded_ids.update([r[0] for r in low_ratings])
+        
+        return excluded_ids
         
     def get_user_based_recommendations(self, user_id: int, n_recommendations: int = 10):
         """Collaborative filtering with implicit feedback"""
@@ -54,6 +67,9 @@ class MovieRecommender:
         # Get similar users
         similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:11]
         
+        # Get movies to exclude
+        excluded_ids = self._get_excluded_movie_ids(user_id)
+        
         # Get movies from similar users
         user_movies = set(df.loc[user_id][df.loc[user_id] > 0].index)
         recommendations = {}
@@ -65,7 +81,8 @@ class MovieRecommender:
             sim_user_movies = df.loc[sim_user_id][df.loc[sim_user_id] > 0]
             
             for movie_id, rating in sim_user_movies.items():
-                if movie_id not in user_movies:
+                # Skip if movie is in user's library or excluded (low-rated)
+                if movie_id not in user_movies and movie_id not in excluded_ids:
                     if movie_id not in recommendations:
                         recommendations[movie_id] = 0
                     recommendations[movie_id] += rating * similarity
@@ -138,14 +155,22 @@ class MovieRecommender:
         if not top_genre_names:
             return self._get_popular_movies(n_recommendations, user_id)
         
+        # Get movies to exclude
+        excluded_ids = self._get_excluded_movie_ids(user_id)
+        
         # Find similar movies
         all_movies = self.db.query(Movie).filter(Movie.vote_count >= 50).all()
         recommendations = []
         
+        # Build complete set of movies to exclude (all rated, favorites, watchlist)
         seen_movie_ids = set(movie_ids)
+        # Add ALL rated movies (not just high-rated ones)
+        all_rated_ids = [r.movie_id for r in user_ratings]
+        seen_movie_ids.update(all_rated_ids)
         
         for movie in all_movies:
-            if movie.id not in seen_movie_ids:
+            # Skip if already seen or excluded (low-rated)
+            if movie.id not in seen_movie_ids and movie.id not in excluded_ids:
                 try:
                     import json
                     genres = json.loads(movie.genres) if isinstance(movie.genres, str) else movie.genres
@@ -172,6 +197,10 @@ class MovieRecommender:
             user_watchlist = self.db.query(WatchlistItem.movie_id).filter(WatchlistItem.user_id == exclude_user_id).all()
             
             seen_ids = set([r[0] for r in user_ratings] + [f[0] for f in user_favorites] + [w[0] for w in user_watchlist])
+            
+            # Also exclude movies rated 2 stars or less
+            excluded_ids = self._get_excluded_movie_ids(exclude_user_id)
+            seen_ids.update(excluded_ids)
             
             if seen_ids:
                 query = query.filter(~Movie.id.in_(seen_ids))

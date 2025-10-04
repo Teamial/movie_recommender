@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import Favorites from './pages/Favorites';
 import Watchlist from './pages/Watchlist';
 import Recommendations from './pages/Recommendations';
+import BasedOn from './pages/BasedOn';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/watchlist" element={<Watchlist />} />
             <Route path="/recommendations" element={<Recommendations />} />
+            <Route path="/based-on" element={<BasedOn />} />
           </Routes>
           <PopmeltBadge />
         </div>

@@ -4,7 +4,7 @@ Scheduler service for automated movie pipeline runs
 import os
 import sys
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -43,15 +43,17 @@ class PipelineScheduler:
         """Setup scheduled jobs"""
         
         # Quick update: Every 6 hours (popular + trending)
+        # Start 6 hours from now to avoid immediate execution on startup
+        start_date = datetime.now() + timedelta(hours=6)
         self.scheduler.add_job(
             func=self._quick_update,
-            trigger=IntervalTrigger(hours=6),
+            trigger=IntervalTrigger(hours=6, start_date=start_date),
             id='quick_update',
             name='Quick Update (Popular + Trending)',
             replace_existing=True,
             max_instances=1
         )
-        logger.info("✓ Scheduled: Quick update every 6 hours")
+        logger.info("✓ Scheduled: Quick update every 6 hours (first run in 6 hours)")
         
         # Daily update: Every day at 3 AM (all categories, no enrichment)
         self.scheduler.add_job(

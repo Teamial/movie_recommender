@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, RefreshCw, TrendingUp } from 'lucide-react';
+import { Sparkles, RefreshCw, TrendingUp, Info } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import MovieCard from '../components/MovieCard';
 import { useAuth } from '../context/AuthContext';
 import { getFavorites, getWatchlist, getUserRatings } from '../services/api';
+import { Button } from '@/components/ui/button';
 import api from '../services/api';
 
 const Recommendations = () => {
@@ -66,22 +68,25 @@ const Recommendations = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center"
+          className="text-center max-w-md"
         >
-          <Sparkles className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Sign in to see recommendations</h2>
-          <p className="text-gray-400">Create an account or log in to get personalized movie recommendations</p>
+          <Sparkles className="w-16 h-16 text-primary mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Sign in to see recommendations</h2>
+          <p className="text-muted-foreground mb-6">Create an account or log in to get personalized movie recommendations</p>
+          <Button asChild className="rounded-xl">
+            <Link to="/login">Sign In</Link>
+          </Button>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <motion.div
@@ -89,58 +94,58 @@ const Recommendations = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-12"
         >
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl">
-                <Sparkles className="w-8 h-8 text-white" />
+              <div className="p-3 bg-primary/10 rounded-2xl">
+                <Sparkles className="w-8 h-8 text-primary" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold text-white mb-2">
+                <h1 className="text-4xl font-bold text-foreground mb-2">
                   Recommended For You
                 </h1>
-                <p className="text-gray-400 text-lg">
+                <p className="text-muted-foreground text-lg">
                   Personalized picks based on your taste
                 </p>
               </div>
             </div>
-            <button
-              onClick={fetchRecommendations}
-              disabled={loading}
-              className="flex items-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition border border-gray-700 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+            <div className="flex gap-2">
+              <Button
+                asChild
+                variant="outline"
+                className="rounded-xl"
+              >
+                <Link to="/based-on" className="flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Based On
+                </Link>
+              </Button>
+              <Button
+                onClick={fetchRecommendations}
+                disabled={loading}
+                variant="outline"
+                className="rounded-xl"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
-              <div className="flex items-center gap-3">
-                <TrendingUp className="w-5 h-5 text-blue-500" />
-                <div>
-                  <p className="text-gray-400 text-sm">Recommendations</p>
-                  <p className="text-white text-2xl font-bold">{recommendations.length}</p>
-                </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                <span className="text-xs uppercase text-muted-foreground font-medium">Recommendations</span>
               </div>
+              <p className="text-3xl font-bold text-foreground">{recommendations.length}</p>
             </div>
-            <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
-              <div className="flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-purple-500" />
-                <div>
-                  <p className="text-gray-400 text-sm">Based on</p>
-                  <p className="text-white text-2xl font-bold">{favoriteIds.size + Object.keys(userRatings).length}</p>
-                </div>
+            <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                <span className="text-xs uppercase text-muted-foreground font-medium">Based on</span>
               </div>
-            </div>
-            <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full" />
-                <div>
-                  <p className="text-gray-400 text-sm">Algorithm</p>
-                  <p className="text-white text-xl font-bold">Hybrid</p>
-                </div>
-              </div>
+              <p className="text-3xl font-bold text-foreground">{favoriteIds.size + Object.keys(userRatings).length}</p>
             </div>
           </div>
         </motion.div>
@@ -162,29 +167,26 @@ const Recommendations = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-2xl p-12 text-center border border-gray-700"
+            className="bg-card rounded-2xl p-12 text-center border border-border shadow-sm"
           >
-            <p className="text-gray-400 text-lg">{error}</p>
+            <p className="text-muted-foreground text-lg">{error}</p>
           </motion.div>
         ) : recommendations.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-2xl p-12 text-center border border-gray-700"
+            className="bg-card rounded-2xl p-12 text-center border border-border shadow-sm"
           >
-            <Sparkles className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">
+            <Sparkles className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-foreground mb-2">
               No recommendations yet
             </h3>
-            <p className="text-gray-400 mb-6">
+            <p className="text-muted-foreground mb-6">
               Rate some movies, add favorites, or build your watchlist to get personalized recommendations!
             </p>
-            <a
-              href="/"
-              className="inline-block px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl font-semibold transition"
-            >
-              Explore Movies
-            </a>
+            <Button asChild className="rounded-xl">
+              <Link to="/">Explore Movies</Link>
+            </Button>
           </motion.div>
         ) : (
           <motion.div
