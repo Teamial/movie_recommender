@@ -1,0 +1,17 @@
+{
+    "editor.acceptSuggestionOnEnter": "smart",
+    "editor.inlineSuggest.edits.renderSideBySide": "auto",
+    "editor.inlineSuggest.enabled": true,
+    "terminal.integrated.suggest.quickSuggestions": {
+        
+        "commands": "on",
+        "arguments": "on",
+        "unknown": "off"
+    },
+    "workbench.editor.enablePreview": false,
+    "cursor.terminal.enableAiChecks": true,
+    "css.validate": false,
+  "tailwindCSS.experimental.classRegex": [
+    ["className\\s*[:=]\\s*['\"]([^'\"]*)", "([^'\"]*)"]
+  ]
+}

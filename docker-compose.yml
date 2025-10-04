@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  ***REMOVED***:
+    image: ***REMOVED***:14
+    container_name: movies-***REMOVED***
+    environment:
+      POSTGRES_USER: ***REMOVED***
+      POSTGRES_PASSWORD: ***REMOVED***
+      POSTGRES_DB: movies_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ***REMOVED***_data:/var/lib/***REMOVED***ql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ***REMOVED***"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ***REMOVED***_data:
