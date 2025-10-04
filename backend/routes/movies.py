@@ -66,6 +66,7 @@ def get_recommendations(
     user_id: int = Query(...),
     limit: int = Query(10, ge=1, le=50),
     use_context: bool = Query(True, description="Enable context-aware recommendations"),
+    use_embeddings: bool = Query(False, description="Enable embedding-based recommendations (requires deep learning libs)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -83,7 +84,12 @@ def get_recommendations(
         raise HTTPException(status_code=403, detail="Not authorized to view these recommendations")
     
     recommender = MovieRecommender(db)
-    recommendations = recommender.get_hybrid_recommendations(user_id, limit, use_context=use_context)
+    recommendations = recommender.get_hybrid_recommendations(
+        user_id, 
+        limit, 
+        use_context=use_context,
+        use_embeddings=use_embeddings
+    )
     
     # Track recommendations for A/B testing
     try:

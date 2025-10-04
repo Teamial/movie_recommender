@@ -811,8 +811,52 @@ class MovieRecommender:
         scored_movies.sort(key=lambda x: x[1], reverse=True)
         return [movie for movie, _ in scored_movies[:n_recommendations]]
     
+    def get_embedding_recommendations(self, user_id: int, n_recommendations: int = 10):
+        """
+        Get recommendations using deep learning embeddings
+        
+        Uses BERT for text, ResNet for images, and sequence models for user history.
+        Falls back to other methods if embeddings unavailable.
+        
+        Args:
+            user_id: User ID
+            n_recommendations: Number of recommendations to return
+        
+        Returns:
+            List of Movie objects
+        """
+        try:
+            # Import and initialize embedding recommender (lazy loading)
+            from backend.ml.embedding_recommender import EmbeddingRecommender, DEEP_LEARNING_AVAILABLE
+            
+            if not DEEP_LEARNING_AVAILABLE:
+                logger.warning("Deep learning libraries not available, falling back to SVD")
+                return self.get_svd_recommendations(user_id, n_recommendations)
+            
+            # Initialize recommender (will reuse cache)
+            embedding_rec = EmbeddingRecommender(self.db)
+            
+            # Get recommendations
+            recommendations = embedding_rec.get_embedding_recommendations(
+                user_id, 
+                n_recommendations
+            )
+            
+            # Apply genre filtering
+            recommendations = self._filter_disliked_genres(recommendations, user_id)
+            
+            logger.info(f"Generated {len(recommendations)} embedding-based recommendations for user {user_id}")
+            return recommendations
+            
+        except ImportError as e:
+            logger.warning(f"Embedding recommender not available: {e}, falling back to SVD")
+            return self.get_svd_recommendations(user_id, n_recommendations)
+        except Exception as e:
+            logger.error(f"Error in embedding recommendations: {e}, falling back to SVD")
+            return self.get_svd_recommendations(user_id, n_recommendations)
+    
     def get_hybrid_recommendations(self, user_id: int, n_recommendations: int = 10, 
-                                   use_context: bool = True):
+                                   use_context: bool = True, use_embeddings: bool = False):
         """
         Intelligent hybrid recommendations with cold start handling and context-awareness
         Automatically selects best strategy based on user data
@@ -880,32 +924,61 @@ class MovieRecommender:
         
         else:
             # Advanced hybrid approach for users with sufficient data
-            # Primary: SVD (Matrix Factorization) - best accuracy
+            # Primary: Embeddings (if enabled) or SVD - best accuracy
             # Secondary: Item-based CF - good for sparse data
             # Tertiary: Content-based - diversity and cold items
-            
-            # Get recommendations from multiple strategies
-            svd_movies = self.get_svd_recommendations(user_id, n_recommendations)
-            item_movies = self.get_item_based_recommendations(user_id, n_recommendations)
-            content_movies = self.get_content_based_recommendations(user_id, n_recommendations)
             
             seen_ids = set()
             hybrid_recommendations = []
             
-            # Weighting strategy:
-            # - 60% from SVD (most accurate)
-            # - 25% from Item-based CF (complementary)
-            # - 15% from Content-based (diversity)
-            
-            svd_weight = int(n_recommendations * 0.6)
-            item_weight = int(n_recommendations * 0.25)
-            content_weight = n_recommendations - svd_weight - item_weight
-            
-            # Add SVD recommendations (primary)
-            for movie in svd_movies[:svd_weight]:
-                if movie.id not in seen_ids:
-                    hybrid_recommendations.append(movie)
-                    seen_ids.add(movie.id)
+            if use_embeddings:
+                # Weighting with embeddings:
+                # - 40% from Embeddings (deep learning)
+                # - 30% from SVD (matrix factorization)
+                # - 20% from Item-based CF (complementary)
+                # - 10% from Content-based (diversity)
+                
+                embedding_movies = self.get_embedding_recommendations(user_id, n_recommendations)
+                svd_movies = self.get_svd_recommendations(user_id, n_recommendations)
+                item_movies = self.get_item_based_recommendations(user_id, n_recommendations)
+                content_movies = self.get_content_based_recommendations(user_id, n_recommendations)
+                
+                embedding_weight = int(n_recommendations * 0.4)
+                svd_weight = int(n_recommendations * 0.3)
+                item_weight = int(n_recommendations * 0.2)
+                content_weight = n_recommendations - embedding_weight - svd_weight - item_weight
+                
+                # Add Embedding recommendations (primary)
+                for movie in embedding_movies[:embedding_weight]:
+                    if movie.id not in seen_ids:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+                
+                # Add SVD recommendations (secondary)
+                for movie in svd_movies[:svd_weight]:
+                    if movie.id not in seen_ids and len(hybrid_recommendations) < n_recommendations:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+                
+            else:
+                # Standard weighting without embeddings:
+                # - 60% from SVD (most accurate)
+                # - 25% from Item-based CF (complementary)
+                # - 15% from Content-based (diversity)
+                
+                svd_movies = self.get_svd_recommendations(user_id, n_recommendations)
+                item_movies = self.get_item_based_recommendations(user_id, n_recommendations)
+                content_movies = self.get_content_based_recommendations(user_id, n_recommendations)
+                
+                svd_weight = int(n_recommendations * 0.6)
+                item_weight = int(n_recommendations * 0.25)
+                content_weight = n_recommendations - svd_weight - item_weight
+                
+                # Add SVD recommendations (primary)
+                for movie in svd_movies[:svd_weight]:
+                    if movie.id not in seen_ids:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
             
             # Add Item-based recommendations (secondary)
             for movie in item_movies[:item_weight]:
