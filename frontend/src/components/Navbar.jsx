@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Film, Heart, Bookmark, User, LogOut } from 'lucide-react';
+import { Film, Heart, Bookmark, User, LogOut, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
@@ -21,6 +21,10 @@ const Navbar = () => {
 
             {user ? (
               <>
+                <Link to="/recommendations" className="flex items-center gap-2 text-gray-300 hover:text-white transition">
+                  <Sparkles className="w-5 h-5" />
+                  <span>For You</span>
+                </Link>
                 <Link to="/favorites" className="flex items-center gap-2 text-gray-300 hover:text-white transition">
                   <Heart className="w-5 h-5" />
                   <span>Favorites</span>

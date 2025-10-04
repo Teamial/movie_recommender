@@ -1,167 +1,181 @@
-import { Star, Heart, Bookmark } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { Heart, Bookmark, Star } from 'lucide-react';
 import { addFavorite, removeFavorite, addToWatchlist, removeFromWatchlist, createRating } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import MovieDetailModal from './MovieDetailModal';
 
-const MovieCard = ({ movie, isFavorited, isInWatchlisted, userRating, onUpdate }) => {
+const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) => {
   const { user } = useAuth();
-  const [isFavorite, setIsFavorite] = useState(isFavorited || false);
-  const [isInWatchlist, setIsInWatchlist] = useState(isInWatchlisted || false);
-  const [rating, setRating] = useState(userRating || 0);
-  const [hoveredRating, setHoveredRating] = useState(0);
-  const [showRating, setShowRating] = useState(false);
+  const [localFavorite, setLocalFavorite] = useState(isFavorite);
+  const [localWatchlist, setLocalWatchlist] = useState(isInWatchlist);
+  const [localRating, setLocalRating] = useState(userRating);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [showModal, setShowModal] = useState(false);
+
+  // Update local state when props change
+  useEffect(() => {
+    setLocalFavorite(isFavorite);
+  }, [isFavorite]);
 
   useEffect(() => {
-    setIsFavorite(isFavorited || false);
-    setIsInWatchlist(isInWatchlisted || false);
-    setRating(userRating || 0);
-  }, [isFavorited, isInWatchlisted, userRating]);
+    setLocalWatchlist(isInWatchlist);
+  }, [isInWatchlist]);
+
+  useEffect(() => {
+    setLocalRating(userRating);
+  }, [userRating]);
 
   const handleFavorite = async (e) => {
-    e.preventDefault();
-    if (!user) {
-      alert('Please login to add favorites');
-      return;
-    }
-
+    e.stopPropagation();
+    if (!user) return;
+    
     try {
-      if (isFavorite) {
+      if (localFavorite) {
         await removeFavorite(movie.id);
-        setIsFavorite(false);
+        setLocalFavorite(false);
       } else {
         await addFavorite(movie.id);
-        setIsFavorite(true);
+        setLocalFavorite(true);
       }
-      if (onUpdate) onUpdate();
+      if (onUpdate) await onUpdate();
     } catch (error) {
       console.error('Error updating favorite:', error);
     }
   };
 
   const handleWatchlist = async (e) => {
-    e.preventDefault();
-    if (!user) {
-      alert('Please login to add to watchlist');
-      return;
-    }
-
+    e.stopPropagation();
+    if (!user) return;
+    
     try {
-      if (isInWatchlist) {
+      if (localWatchlist) {
         await removeFromWatchlist(movie.id);
-        setIsInWatchlist(false);
+        setLocalWatchlist(false);
       } else {
         await addToWatchlist(movie.id);
-        setIsInWatchlist(true);
+        setLocalWatchlist(true);
       }
-      if (onUpdate) onUpdate();
+      if (onUpdate) await onUpdate();
     } catch (error) {
       console.error('Error updating watchlist:', error);
     }
   };
 
-  const handleRating = async (ratingValue) => {
-    if (!user) {
-      alert('Please login to rate movies');
-      return;
-    }
-
+  const handleRating = async (rating, e) => {
+    e.stopPropagation();
+    if (!user) return;
+    
     try {
-      await createRating({ movie_id: movie.id, rating: ratingValue }, user.id);
-      setRating(ratingValue);
-      setShowRating(false);
-      if (onUpdate) onUpdate();
+      await createRating({ movie_id: movie.id, rating }, user.id);
+      setLocalRating(rating);
+      if (onUpdate) await onUpdate();
     } catch (error) {
       console.error('Error rating movie:', error);
     }
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-      <div className="relative">
-        <img
-          src={movie.poster_url || 'https://via.placeholder.com/500x750?text=No+Image'}
-          alt={movie.title}
-          className="w-full h-96 object-cover"
-        />
-        <div className="absolute top-2 right-2 flex gap-2">
+    <>
+      <div 
+        className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transition-transform hover:scale-105 cursor-pointer"
+        onClick={() => setShowModal(true)}
+      >
+        <div className="relative aspect-[2/3]">
+          {movie.poster_url ? (
+            <img
+              src={movie.poster_url}
+              alt={movie.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+              <span className="text-gray-500">No Image</span>
+            </div>
+          )}
+          
+          {/* Quick Actions Overlay */}
           {user && (
-            <>
+            <div className="absolute top-2 right-2 flex gap-2">
               <button
                 onClick={handleFavorite}
-                className="p-2 bg-black/60 rounded-full hover:bg-black/80 transition"
+                className="p-2 bg-black bg-opacity-60 hover:bg-opacity-80 rounded-full transition"
               >
                 <Heart
-                  className={`w-5 h-5 ${isFavorite ? 'fill-red-500 text-red-500' : 'text-white'}`}
+                  className={`w-5 h-5 ${
+                    localFavorite ? 'text-red-500 fill-red-500' : 'text-white'
+                  }`}
                 />
               </button>
               <button
                 onClick={handleWatchlist}
-                className="p-2 bg-black/60 rounded-full hover:bg-black/80 transition"
+                className="p-2 bg-black bg-opacity-60 hover:bg-opacity-80 rounded-full transition"
               >
                 <Bookmark
-                  className={`w-5 h-5 ${isInWatchlist ? 'fill-blue-500 text-blue-500' : 'text-white'}`}
+                  className={`w-5 h-5 ${
+                    localWatchlist ? 'text-blue-500 fill-blue-500' : 'text-white'
+                  }`}
                 />
               </button>
-            </>
+            </div>
+          )}
+
+          {/* Rating Badge */}
+          {movie.vote_average && (
+            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black bg-opacity-80 rounded-md flex items-center gap-1">
+              <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+              <span className="text-white text-sm font-semibold">
+                {movie.vote_average.toFixed(1)}
+              </span>
+            </div>
           )}
         </div>
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4">
-          <div className="flex items-center gap-2">
-            <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-            <span className="text-white font-semibold">{movie.vote_average?.toFixed(1) || 'N/A'}</span>
-          </div>
-        </div>
-      </div>
-      <div className="p-4">
-        <h3 className="text-white font-bold text-lg mb-2 line-clamp-1">{movie.title}</h3>
-        <p className="text-gray-400 text-sm line-clamp-2 mb-3">{movie.overview}</p>
-        
-        {/* User Rating Section */}
-        {user && (
-          <div className="mb-3">
-            {!showRating ? (
-              <button
-                onClick={() => setShowRating(true)}
-                className="text-sm text-blue-400 hover:text-blue-300 transition"
-              >
-                {rating > 0 ? `Your rating: ${rating} ★` : 'Rate this movie'}
-              </button>
-            ) : (
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => handleRating(star)}
-                    onMouseEnter={() => setHoveredRating(star)}
-                    onMouseLeave={() => setHoveredRating(0)}
-                    className="transition"
-                  >
-                    <Star
-                      className={`w-6 h-6 ${
-                        star <= (hoveredRating || rating)
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-gray-500'
-                      }`}
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
-        <div className="flex flex-wrap gap-2">
-          {movie.genres?.slice(0, 2).map((genre, index) => (
-            <span
-              key={index}
-              className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded-full"
-            >
-              {genre}
-            </span>
-          ))}
+        <div className="p-4">
+          <h3 className="text-white font-semibold text-lg mb-2 line-clamp-2">
+            {movie.title}
+          </h3>
+          
+          {movie.release_date && (
+            <p className="text-gray-400 text-sm mb-3">
+              {new Date(movie.release_date).getFullYear()}
+            </p>
+          )}
+
+          {/* User Rating */}
+          {user && (
+            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onMouseEnter={() => setHoverRating(star)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  onClick={(e) => handleRating(star, e)}
+                  className="transition-transform hover:scale-110"
+                >
+                  <Star
+                    className={`w-4 h-4 ${
+                      star <= (hoverRating || localRating)
+                        ? 'text-yellow-500 fill-yellow-500'
+                        : 'text-gray-600'
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-    </div>
+
+      <MovieDetailModal
+        movie={movie}
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        isFavorite={localFavorite}
+        isInWatchlist={localWatchlist}
+        userRating={localRating}
+        onUpdate={onUpdate}
+      />
+    </>
   );
 };
 
