@@ -8,9 +8,9 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
-from backend.database import get_db
-from backend.models import PipelineRun, User
-from backend.auth import get_current_user
+from database import get_db
+from models import PipelineRun, User
+from auth import get_current_user
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -63,7 +63,7 @@ async def get_pipeline_status(db: Session = Depends(get_db)):
     # Get scheduled jobs info
     scheduled_jobs = []
     try:
-        from backend.scheduler import get_scheduler
+        from scheduler import get_scheduler
         scheduler = get_scheduler()
         scheduled_jobs = scheduler.get_job_status()
     except Exception as e:
@@ -165,8 +165,8 @@ async def trigger_pipeline_run(
 
 def run_pipeline_task(run_id: int, update_type: str):
     """Background task to run the pipeline"""
-    from backend.scheduler import get_scheduler
-    from backend.database import SessionLocal
+    from scheduler import get_scheduler
+    from database import SessionLocal
     import traceback
     
     db = SessionLocal()
@@ -203,7 +203,7 @@ async def get_scheduler_status(current_user: User = Depends(get_current_user)):
     """Get scheduler service status (requires auth)"""
     
     try:
-        from backend.scheduler import get_scheduler
+        from scheduler import get_scheduler
         scheduler = get_scheduler()
         jobs = scheduler.get_job_status()
         
@@ -225,7 +225,7 @@ async def start_scheduler(current_user: User = Depends(get_current_user)):
     """Start the scheduler service (requires auth)"""
     
     try:
-        from backend.scheduler import get_scheduler
+        from scheduler import get_scheduler
         scheduler = get_scheduler()
         
         if scheduler.scheduler.running:
@@ -242,7 +242,7 @@ async def stop_scheduler(current_user: User = Depends(get_current_user)):
     """Stop the scheduler service (requires auth)"""
     
     try:
-        from backend.scheduler import get_scheduler
+        from scheduler import get_scheduler
         scheduler = get_scheduler()
         
         if not scheduler.scheduler.running:

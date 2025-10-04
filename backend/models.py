@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey, DateTime, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey, DateTime, JSON, Boolean, BigInteger
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from backend.database import Base
+from database import Base
+from pgvector.sqlalchemy import Vector
 
 class Movie(Base):
     __tablename__ = "movies"
@@ -22,12 +23,15 @@ class Movie(Base):
     crew = Column(JSON)  # Key crew members (director, producers, etc.)
     keywords = Column(JSON)  # Movie keywords/tags
     runtime = Column(Integer)  # Runtime in minutes
-    budget = Column(Integer)  # Budget in dollars
-    revenue = Column(Integer)  # Revenue in dollars
+    budget = Column(BigInteger)  # Budget in dollars (BIGINT for large values)
+    revenue = Column(BigInteger)  # Revenue in dollars (BIGINT for large values)
     tagline = Column(String(500))  # Movie tagline
     similar_movie_ids = Column(JSON)  # IDs of similar movies
     trailer_key = Column(String(100))  # YouTube trailer key
     original_language = Column(String(10))  # Original language code (e.g., 'en', 'fr')
+    
+    # Vector embedding for similarity search (384 dimensions from all-MiniLM-L6-v2)
+    embedding = Column(Vector(384))  # pgvector column for semantic search
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -181,3 +185,20 @@ class ModelUpdateLog(Base):
     
     def __repr__(self):
         return f"<ModelUpdateLog(type={self.model_type}, update={self.update_type}, time={self.created_at})>"
+
+class PasswordResetToken(Base):
+    """Password reset tokens for email-based password reset"""
+    __tablename__ = "password_reset_tokens"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token = Column(String(255), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User")
+    
+    def __repr__(self):
+        return f"<PasswordResetToken(user_id={self.user_id}, expires_at={self.expires_at})>"

@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List
-from backend.database import get_db
-from backend.models import Rating as RatingModel, User as UserModel, Movie as MovieModel
-from backend.schemas import RatingCreate, RatingResponse, RatingWithMovie, UserCreate, UserResponse
+from database import get_db
+from models import Rating as RatingModel, Movie as MovieModel
+from schemas import RatingCreate, RatingResponse, RatingWithMovie
 
 router = APIRouter(prefix="/ratings", tags=["ratings"])
 
@@ -19,7 +19,7 @@ def create_rating(
     
     Also triggers incremental model update if threshold is reached.
     """
-    from backend.ml.recommender import MovieRecommender
+    from ml.recommender import MovieRecommender
     
     # Check if movie exists
     movie = db.query(MovieModel).filter(MovieModel.id == rating.movie_id).first()
@@ -85,20 +85,4 @@ def get_user_ratings(
     
     return ratings
 
-@router.post("/users", response_model=UserResponse, status_code=201)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Create a new user"""
-    
-    # Check if username exists
-    existing_user = db.query(UserModel).filter(
-        (UserModel.username == user.username) | (UserModel.email == user.email)
-    ).first()
-    
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Username or email already exists")
-    
-    new_user = UserModel(username=user.username, email=user.email)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+# Removed duplicate user creation endpoint - use /auth/register instead

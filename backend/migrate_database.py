@@ -29,7 +29,7 @@ def migrate_database():
             # Check if movies table exists
             if 'movies' not in inspector.get_table_names():
                 print("⚠️  Movies table doesn't exist. Creating fresh schema...")
-                from backend.database import Base
+                from database import Base
                 Base.metadata.create_all(bind=engine)
                 print("✅ Fresh database schema created")
                 return

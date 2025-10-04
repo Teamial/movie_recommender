@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Film, Heart, Bookmark, Sparkles, Menu } from 'lucide-react';
+import { Film, Heart, Bookmark, Sparkles, Menu, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '@/components/ui/button';
 import {
@@ -60,9 +60,13 @@ const Navbar = () => {
         <div className="hidden md:flex items-center gap-2">
           {user ? (
             <>
-              <span className="text-sm text-muted-foreground px-3">
-                {user.username}
-              </span>
+              <Link 
+                to="/settings"
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-muted"
+              >
+                <Settings className="w-4 h-4" />
+                <span>{user.username}</span>
+              </Link>
               <Button
                 onClick={logout}
                 variant="outline"
@@ -139,6 +143,13 @@ const Navbar = () => {
 
               {user ? (
                 <>
+                  <Link 
+                    to="/settings"
+                    className="text-base font-medium hover:text-primary transition-colors flex items-center gap-2"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>Settings</span>
+                  </Link>
                   <span className="text-sm text-muted-foreground">
                     Logged in as {user.username}
                   </span>

@@ -7,10 +7,10 @@ from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 
-from backend.database import get_db
-from backend.auth import get_current_user
-from backend.models import User
-from backend.ml.recommender import MovieRecommender
+from database import get_db
+from auth import get_current_user
+from models import User
+from ml.recommender import MovieRecommender
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -207,7 +207,7 @@ async def get_recommendation_stats(
     """
     Get overall recommendation statistics
     """
-    from backend.models import RecommendationEvent
+    from models import RecommendationEvent
     from sqlalchemy import func
     from datetime import timedelta
     
@@ -248,7 +248,7 @@ async def get_top_performing_recommendations(
     """
     Get top performing movie recommendations (by click rate)
     """
-    from backend.models import RecommendationEvent, Movie
+    from models import RecommendationEvent, Movie
     from sqlalchemy import func
     from datetime import timedelta
     
@@ -291,7 +291,7 @@ async def get_most_active_users(
     """
     Get most active users (by recommendation interactions)
     """
-    from backend.models import RecommendationEvent, User as UserModel
+    from models import RecommendationEvent, User as UserModel
     from sqlalchemy import func, or_
     from datetime import timedelta
     

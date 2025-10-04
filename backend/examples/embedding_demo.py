@@ -18,8 +18,8 @@ import time
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
-from backend.database import SessionLocal
-from backend.models import User, Rating, Movie
+from database import SessionLocal
+from models import User, Rating, Movie
 import numpy as np
 
 
@@ -35,7 +35,7 @@ def check_dependencies():
     print_header("1. CHECKING DEPENDENCIES")
     
     try:
-        from backend.ml.embedding_recommender import DEEP_LEARNING_AVAILABLE
+        from ml.embedding_recommender import DEEP_LEARNING_AVAILABLE
         
         if DEEP_LEARNING_AVAILABLE:
             print("\n✅ Deep learning libraries available!")
@@ -64,7 +64,7 @@ def demo_text_embeddings(db):
     """Demo: Generate text embeddings for movies"""
     print_header("2. TEXT EMBEDDINGS (BERT)")
     
-    from backend.ml.embedding_recommender import MovieEmbedder
+    from ml.embedding_recommender import MovieEmbedder
     
     print("\n📖 Loading BERT model (first time: downloads ~80 MB)...")
     embedder = MovieEmbedder()
@@ -101,7 +101,7 @@ def demo_image_embeddings(db):
     """Demo: Generate image embeddings for movie posters"""
     print_header("3. IMAGE EMBEDDINGS (ResNet)")
     
-    from backend.ml.embedding_recommender import MovieEmbedder
+    from ml.embedding_recommender import MovieEmbedder
     
     print("\n🖼️  Loading ResNet-50 model (first time: downloads ~100 MB)...")
     embedder = MovieEmbedder()
@@ -141,7 +141,7 @@ def demo_combined_embeddings(db):
     """Demo: Combined text + image embeddings"""
     print_header("4. COMBINED EMBEDDINGS (Multi-Modal)")
     
-    from backend.ml.embedding_recommender import MovieEmbedder
+    from ml.embedding_recommender import MovieEmbedder
     
     embedder = MovieEmbedder()
     
@@ -180,7 +180,7 @@ def demo_user_embeddings(db):
     """Demo: Generate user embeddings from viewing history"""
     print_header("5. USER EMBEDDINGS (Viewing History)")
     
-    from backend.ml.embedding_recommender import MovieEmbedder, UserEmbedder
+    from ml.embedding_recommender import MovieEmbedder, UserEmbedder
     
     # Get user with ratings
     user = db.query(User).join(Rating).group_by(User.id).having(
@@ -232,7 +232,7 @@ def demo_similarity_search(db):
     """Demo: Find similar movies using embeddings"""
     print_header("6. SIMILARITY SEARCH")
     
-    from backend.ml.embedding_recommender import EmbeddingRecommender
+    from ml.embedding_recommender import EmbeddingRecommender
     
     recommender = EmbeddingRecommender(db)
     
@@ -275,7 +275,7 @@ def demo_recommendations(db):
     """Demo: Get embedding-based recommendations"""
     print_header("7. EMBEDDING-BASED RECOMMENDATIONS")
     
-    from backend.ml.recommender import MovieRecommender
+    from ml.recommender import MovieRecommender
     
     # Get user with ratings
     user = db.query(User).join(Rating).group_by(User.id).having(
@@ -319,8 +319,8 @@ def demo_explanation(db):
     """Demo: Explain why a movie was recommended"""
     print_header("8. RECOMMENDATION EXPLANATIONS")
     
-    from backend.ml.embedding_recommender import EmbeddingRecommender
-    from backend.ml.recommender import MovieRecommender
+    from ml.embedding_recommender import EmbeddingRecommender
+    from ml.recommender import MovieRecommender
     
     # Get user and their recommendations
     user = db.query(User).join(Rating).group_by(User.id).having(
@@ -360,7 +360,7 @@ def demo_metrics(db):
     """Demo: Show embedding quality metrics"""
     print_header("9. QUALITY METRICS")
     
-    from backend.ml.embedding_recommender import EmbeddingRecommender
+    from ml.embedding_recommender import EmbeddingRecommender
     
     recommender = EmbeddingRecommender(db)
     

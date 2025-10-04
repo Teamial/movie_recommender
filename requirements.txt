@@ -13,9 +13,16 @@ python-multipart>=0.0.6
 pydantic>=2.0.0
 apscheduler>=3.10.4
 psycopg2-binary>=2.9.9
+pgvector>=0.2.4
 
 # Deep Learning dependencies for embedding-based recommendations
 torch>=2.0.0
 torchvision>=0.15.0
 sentence-transformers>=2.2.0
 Pillow>=10.0.0
+
+# Graph Learning dependencies for graph-based recommendations
+networkx>=3.0
+node2vec>=0.4.6
+# Optional: PyTorch Geometric for advanced GNN (requires manual install)
+# torch-geometric (see: https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html)

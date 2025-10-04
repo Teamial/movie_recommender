@@ -63,6 +63,13 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class UserUpdate(BaseModel):
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    email: Optional[EmailStr] = None
+    age: Optional[int] = Field(None, ge=13, le=120)
+    location: Optional[str] = Field(None, max_length=100)
+    genre_preferences: Optional[dict] = None
+
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -164,3 +171,15 @@ class Genre(BaseModel):
     
     class Config:
         from_attributes = True
+
+# Password Reset Schemas
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=6)
+
+class PasswordResetResponse(BaseModel):
+    message: str
+    success: bool

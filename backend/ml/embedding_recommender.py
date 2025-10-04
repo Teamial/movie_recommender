@@ -32,7 +32,7 @@ except ImportError:
     DEEP_LEARNING_AVAILABLE = False
     logging.warning("Deep learning libraries not available. Install with: pip install torch torchvision sentence-transformers pillow")
 
-from backend.models import Movie, User, Rating, Favorite, WatchlistItem
+from models import Movie, User, Rating, Favorite, WatchlistItem
 
 logger = logging.getLogger(__name__)
 

@@ -16,9 +16,9 @@ from datetime import datetime
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
-from backend.database import SessionLocal
-from backend.ml.recommender import MovieRecommender
-from backend.models import User, Rating, Movie
+from database import SessionLocal
+from ml.recommender import MovieRecommender
+from models import User, Rating, Movie
 import json
 
 

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from backend.models import Rating, Movie, User, Favorite, WatchlistItem
+from models import Rating, Movie, User, Favorite, WatchlistItem
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import TruncatedSVD
 from scipy.sparse import csr_matrix
@@ -12,6 +12,17 @@ import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Try importing graph recommender
+try:
+    from ml.graph_recommender import (
+        GraphRecommender,
+        GRAPH_LEARNING_AVAILABLE
+    )
+except ImportError:
+    GRAPH_LEARNING_AVAILABLE = False
+    GraphRecommender = None
+    logger.warning("Graph recommender not available")
 
 class MovieRecommender:
     def __init__(self, db: Session):
@@ -815,8 +826,8 @@ class MovieRecommender:
         """
         Get recommendations using deep learning embeddings
         
-        Uses BERT for text, ResNet for images, and sequence models for user history.
-        Falls back to other methods if embeddings unavailable.
+        Prioritizes pgvector-based recommendations (database-backed) for speed.
+        Falls back to BERT+ResNet embeddings or SVD if unavailable.
         
         Args:
             user_id: User ID
@@ -826,8 +837,28 @@ class MovieRecommender:
             List of Movie objects
         """
         try:
-            # Import and initialize embedding recommender (lazy loading)
-            from backend.ml.embedding_recommender import EmbeddingRecommender, DEEP_LEARNING_AVAILABLE
+            # Try pgvector first (fastest, database-backed)
+            from ml.pgvector_recommender import PgvectorRecommender
+            
+            pgvector_rec = PgvectorRecommender(self.db)
+            recommendations = pgvector_rec.get_recommendations(
+                user_id,
+                n_recommendations,
+                diversity_boost=0.2
+            )
+            
+            if recommendations:
+                # Apply genre filtering
+                recommendations = self._filter_disliked_genres(recommendations, user_id)
+                logger.info(f"Generated {len(recommendations)} pgvector-based recommendations for user {user_id}")
+                return recommendations
+            
+        except Exception as e:
+            logger.warning(f"pgvector recommender failed: {e}, trying fallback")
+        
+        # Fallback to original embedding recommender
+        try:
+            from ml.embedding_recommender import EmbeddingRecommender, DEEP_LEARNING_AVAILABLE
             
             if not DEEP_LEARNING_AVAILABLE:
                 logger.warning("Deep learning libraries not available, falling back to SVD")
@@ -855,8 +886,50 @@ class MovieRecommender:
             logger.error(f"Error in embedding recommendations: {e}, falling back to SVD")
             return self.get_svd_recommendations(user_id, n_recommendations)
     
+    def get_graph_recommendations(self, user_id: int, n_recommendations: int = 10):
+        """
+        Get recommendations using graph-based learning (Node2Vec/GNN)
+        
+        Uses knowledge graph structure to discover non-obvious connections:
+        - Nodes: Movies, Users, Actors, Genres, Directors
+        - Edges: Ratings, Cast, Genre membership
+        - Method: Node2Vec embeddings in graph space
+        
+        Args:
+            user_id: User ID to generate recommendations for
+            n_recommendations: Number of recommendations to return
+            
+        Returns:
+            List of recommended Movie objects
+        """
+        
+        if not GRAPH_LEARNING_AVAILABLE or GraphRecommender is None:
+            logger.warning("Graph recommender not available, falling back to SVD")
+            return self.get_svd_recommendations(user_id, n_recommendations)
+        
+        try:
+            # Initialize graph recommender
+            graph_rec = GraphRecommender(self.db)
+            
+            # Get recommendations
+            recommendations = graph_rec.get_graph_recommendations(
+                user_id,
+                n_recommendations
+            )
+            
+            # Apply genre filtering
+            recommendations = self._filter_disliked_genres(recommendations, user_id)
+            
+            logger.info(f"Generated {len(recommendations)} graph-based recommendations for user {user_id}")
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"Error in graph recommendations: {e}, falling back to SVD")
+            return self.get_svd_recommendations(user_id, n_recommendations)
+    
     def get_hybrid_recommendations(self, user_id: int, n_recommendations: int = 10, 
-                                   use_context: bool = True, use_embeddings: bool = False):
+                                   use_context: bool = True, use_embeddings: bool = False,
+                                   use_graph: bool = False):
         """
         Intelligent hybrid recommendations with cold start handling and context-awareness
         Automatically selects best strategy based on user data
@@ -865,6 +938,8 @@ class MovieRecommender:
             user_id: User ID to generate recommendations for
             n_recommendations: Number of recommendations to return
             use_context: Whether to apply contextual filtering (temporal, diversity)
+            use_embeddings: Whether to use deep learning embeddings
+            use_graph: Whether to use graph-based recommendations
         
         Returns:
             List of recommended Movie objects
@@ -931,7 +1006,71 @@ class MovieRecommender:
             seen_ids = set()
             hybrid_recommendations = []
             
-            if use_embeddings:
+            if use_graph and use_embeddings:
+                # Weighting with graph + embeddings:
+                # - 30% from Graph (knowledge graph)
+                # - 30% from Embeddings (deep learning)
+                # - 25% from SVD (matrix factorization)
+                # - 15% from Item-based CF (complementary)
+                
+                graph_movies = self.get_graph_recommendations(user_id, n_recommendations)
+                embedding_movies = self.get_embedding_recommendations(user_id, n_recommendations)
+                svd_movies = self.get_svd_recommendations(user_id, n_recommendations)
+                item_movies = self.get_item_based_recommendations(user_id, n_recommendations)
+                
+                graph_weight = int(n_recommendations * 0.3)
+                embedding_weight = int(n_recommendations * 0.3)
+                svd_weight = int(n_recommendations * 0.25)
+                item_weight = n_recommendations - graph_weight - embedding_weight - svd_weight
+                
+                # Add Graph recommendations (primary)
+                for movie in graph_movies[:graph_weight]:
+                    if movie.id not in seen_ids:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+                
+                # Add Embedding recommendations (co-primary)
+                for movie in embedding_movies[:embedding_weight]:
+                    if movie.id not in seen_ids and len(hybrid_recommendations) < n_recommendations:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+                
+                # Add SVD recommendations (secondary)
+                for movie in svd_movies[:svd_weight]:
+                    if movie.id not in seen_ids and len(hybrid_recommendations) < n_recommendations:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+                
+            elif use_graph:
+                # Weighting with graph only:
+                # - 40% from Graph (knowledge graph)
+                # - 30% from SVD (matrix factorization)
+                # - 20% from Item-based CF (complementary)
+                # - 10% from Content-based (diversity)
+                
+                graph_movies = self.get_graph_recommendations(user_id, n_recommendations)
+                svd_movies = self.get_svd_recommendations(user_id, n_recommendations)
+                item_movies = self.get_item_based_recommendations(user_id, n_recommendations)
+                content_movies = self.get_content_based_recommendations(user_id, n_recommendations)
+                
+                graph_weight = int(n_recommendations * 0.4)
+                svd_weight = int(n_recommendations * 0.3)
+                item_weight = int(n_recommendations * 0.2)
+                content_weight = n_recommendations - graph_weight - svd_weight - item_weight
+                
+                # Add Graph recommendations (primary)
+                for movie in graph_movies[:graph_weight]:
+                    if movie.id not in seen_ids:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+                
+                # Add SVD recommendations (secondary)
+                for movie in svd_movies[:svd_weight]:
+                    if movie.id not in seen_ids and len(hybrid_recommendations) < n_recommendations:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+                
+            elif use_embeddings:
                 # Weighting with embeddings:
                 # - 40% from Embeddings (deep learning)
                 # - 30% from SVD (matrix factorization)
@@ -1082,7 +1221,7 @@ class MovieRecommender:
         Returns:
             dict with update status and metrics
         """
-        from backend.models import ModelUpdateLog, Rating
+        from models import ModelUpdateLog, Rating
         import time
         
         result = {
@@ -1173,7 +1312,7 @@ class MovieRecommender:
         Returns:
             dict with update status and metrics
         """
-        from backend.models import ModelUpdateLog, Rating
+        from models import ModelUpdateLog, Rating
         import time
         
         result = {
@@ -1257,7 +1396,7 @@ class MovieRecommender:
         Returns:
             Recommendation event ID
         """
-        from backend.models import RecommendationEvent
+        from models import RecommendationEvent
         
         try:
             event = RecommendationEvent(
@@ -1286,7 +1425,7 @@ class MovieRecommender:
             user_id: User who clicked
             movie_id: Movie that was clicked
         """
-        from backend.models import RecommendationEvent
+        from models import RecommendationEvent
         from datetime import datetime
         
         try:
@@ -1318,7 +1457,7 @@ class MovieRecommender:
             movie_id: Movie that was rated
             rating: Rating value
         """
-        from backend.models import RecommendationEvent
+        from models import RecommendationEvent
         from datetime import datetime
         
         try:
@@ -1358,7 +1497,7 @@ class MovieRecommender:
             action: Type of action (click, rate, favorite, watchlist)
             value: Optional value (e.g., rating value)
         """
-        from backend.models import RecommendationEvent
+        from models import RecommendationEvent
         from datetime import datetime
         
         try:
@@ -1400,7 +1539,7 @@ class MovieRecommender:
         Returns:
             dict with metrics per algorithm
         """
-        from backend.models import RecommendationEvent
+        from models import RecommendationEvent
         from datetime import datetime, timedelta
         from sqlalchemy import func
         
@@ -1457,7 +1596,7 @@ class MovieRecommender:
         Returns:
             list of update log dictionaries
         """
-        from backend.models import ModelUpdateLog
+        from models import ModelUpdateLog
         
         try:
             logs = self.db.query(ModelUpdateLog)\

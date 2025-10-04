@@ -21,6 +21,12 @@ export const login = (data) => api.post('/auth/login', data, {
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
 });
 export const getCurrentUser = () => api.get('/auth/me');
+export const updateUserProfile = (data) => api.put('/auth/me', data);
+export const forgotPassword = (email) => api.post('/auth/forgot-password', { email });
+export const resetPassword = (token, newPassword) => api.post('/auth/reset-password', { 
+  token, 
+  new_password: newPassword 
+});
 
 // Movies
 export const getMovies = (params) => api.get('/movies/', { params });

@@ -105,8 +105,36 @@ const Onboarding = () => {
     try {
       setLoading(true);
 
-      // Save demographics and genre preferences to localStorage for future use
-      // (Backend endpoint doesn't exist yet, so we store locally)
+      // Prepare genre preferences in backend format
+      // Backend expects: {"Action": 1, "Horror": -1, "Comedy": 1}
+      const genrePreferences = {};
+      Object.entries(selectedGenres).forEach(([genre, preference]) => {
+        if (preference === 'like') {
+          genrePreferences[genre] = 1;
+        } else if (preference === 'dislike') {
+          genrePreferences[genre] = -1;
+        }
+      });
+
+      // Prepare movie ratings for backend
+      const movieRatingsList = Object.entries(movieRatings).map(([movieId, rating]) => ({
+        movie_id: parseInt(movieId),
+        rating: rating
+      }));
+
+      // Send onboarding data to backend
+      const onboardingPayload = {
+        age: demographics.age ? parseInt(demographics.age.split('-')[0]) : null, // Convert "18-24" to 18
+        location: demographics.location || null,
+        genre_preferences: Object.keys(genrePreferences).length > 0 ? genrePreferences : null,
+        movie_ratings: movieRatingsList
+      };
+
+      // Call backend onboarding endpoint
+      const response = await api.post('/onboarding/complete', onboardingPayload);
+      console.log('Onboarding completed:', response.data);
+
+      // Also save to localStorage for frontend reference
       const onboardingData = {
         demographics: demographics,
         genres: {
@@ -115,24 +143,14 @@ const Onboarding = () => {
         },
         completedAt: new Date().toISOString()
       };
-      
       localStorage.setItem(`onboarding_data_${user.id}`, JSON.stringify(onboardingData));
-
-      // Save movie ratings to backend
-      const ratingPromises = Object.entries(movieRatings).map(([movieId, rating]) => 
-        createRating({ movie_id: parseInt(movieId), rating }, user.id)
-      );
-      
-      await Promise.all(ratingPromises);
-
-      // Mark onboarding as complete
       localStorage.setItem(`onboarding_complete_${user.id}`, 'true');
 
       // Redirect to recommendations
       navigate('/recommendations');
     } catch (error) {
       console.error('Error completing onboarding:', error);
-      // Even if ratings fail, mark as complete and redirect
+      // Even if onboarding fails, mark as complete locally and redirect
       localStorage.setItem(`onboarding_complete_${user.id}`, 'true');
       navigate('/recommendations');
     } finally {

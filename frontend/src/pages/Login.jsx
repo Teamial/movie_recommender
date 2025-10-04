@@ -58,12 +58,13 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-foreground font-medium mb-2 text-sm">Username</label>
+            <label className="block text-foreground font-medium mb-2 text-sm">Username or Email</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-3 bg-background text-foreground rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary transition"
+              placeholder="Enter username or email"
               required
             />
           </div>
@@ -77,6 +78,15 @@ const Login = () => {
               className="w-full px-4 py-3 bg-background text-foreground rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary transition"
               required
             />
+          </div>
+
+          <div className="text-right">
+            <Link 
+              to="/forgot-password" 
+              className="text-sm text-primary hover:underline"
+            >
+              Forgot your password?
+            </Link>
           </div>
 
           <Button

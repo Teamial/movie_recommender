@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, String
 from typing import Optional, List
-from backend.database import get_db
-from backend.models import Movie as MovieModel, Genre as GenreModel, User
-from backend.schemas import Movie, MovieList, Genre
-from backend.ml.recommender import MovieRecommender
-from backend.auth import get_current_user
+from database import get_db
+from models import Movie as MovieModel, Genre as GenreModel, User
+from schemas import Movie, MovieList, Genre
+from ml.recommender import MovieRecommender
+from auth import get_current_user
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -67,6 +67,7 @@ def get_recommendations(
     limit: int = Query(10, ge=1, le=50),
     use_context: bool = Query(True, description="Enable context-aware recommendations"),
     use_embeddings: bool = Query(False, description="Enable embedding-based recommendations (requires deep learning libs)"),
+    use_graph: bool = Query(False, description="Enable graph-based recommendations (requires graph libs)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -88,7 +89,8 @@ def get_recommendations(
         user_id, 
         limit, 
         use_context=use_context,
-        use_embeddings=use_embeddings
+        use_embeddings=use_embeddings,
+        use_graph=use_graph
     )
     
     # Track recommendations for A/B testing

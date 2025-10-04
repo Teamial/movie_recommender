@@ -76,6 +76,17 @@ class PipelineScheduler:
             max_instances=1
         )
         logger.info("✓ Scheduled: Weekly enrichment on Sundays at 2:00 AM")
+        
+        # Embedding refresh: Every day at 4 AM (generate embeddings for new movies)
+        self.scheduler.add_job(
+            func=self._refresh_embeddings,
+            trigger=CronTrigger(hour=4, minute=0),
+            id='embedding_refresh',
+            name='Embedding Refresh (New Movies)',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("✓ Scheduled: Embedding refresh daily at 4:00 AM")
     
     def _quick_update(self):
         """Quick update with popular and trending movies"""
@@ -109,6 +120,48 @@ class PipelineScheduler:
             logger.info("✅ Weekly enrichment completed successfully")
         except Exception as e:
             logger.error(f"❌ Weekly enrichment failed: {e}", exc_info=True)
+    
+    def _refresh_embeddings(self):
+        """Refresh embeddings for new movies"""
+        logger.info("🚀 Starting embedding refresh...")
+        try:
+            # Check if embeddings are available
+            try:
+                from generate_embeddings import EmbeddingGenerator, EMBEDDINGS_AVAILABLE
+                from database import SessionLocal
+                
+                if not EMBEDDINGS_AVAILABLE:
+                    logger.warning("⚠️  Embeddings not available, skipping refresh")
+                    return
+                
+                # Generate embeddings for new movies
+                db = SessionLocal()
+                try:
+                    generator = EmbeddingGenerator(db)
+                    
+                    # Get stats before
+                    stats_before = generator.get_embedding_stats()
+                    logger.info(f"Before: {stats_before['movies_without_embeddings']} movies need embeddings")
+                    
+                    if stats_before['movies_without_embeddings'] > 0:
+                        # Generate embeddings (only for movies without embeddings)
+                        generator.generate_all_embeddings(batch_size=100, force_regenerate=False)
+                        
+                        # Get stats after
+                        stats_after = generator.get_embedding_stats()
+                        logger.info(f"After: {stats_after['coverage_percentage']:.1f}% coverage")
+                        logger.info(f"✅ Embedding refresh completed successfully")
+                    else:
+                        logger.info("✅ All movies already have embeddings")
+                
+                finally:
+                    db.close()
+                    
+            except ImportError as e:
+                logger.warning(f"⚠️  Embedding generator not available: {e}")
+                
+        except Exception as e:
+            logger.error(f"❌ Embedding refresh failed: {e}", exc_info=True)
     
     def run_manual_update(self, update_type: str = 'quick'):
         """

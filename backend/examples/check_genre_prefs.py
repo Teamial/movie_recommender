@@ -7,8 +7,8 @@ import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
-from backend.database import SessionLocal
-from backend.models import User
+from database import SessionLocal
+from models import User
 import json
 
 

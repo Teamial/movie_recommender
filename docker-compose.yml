@@ -2,14 +2,14 @@ version: '3.8'
 
 services:
   ***REMOVED***:
-    image: ***REMOVED***:14
+    image: pgvector/pgvector:pg16
     container_name: movies-***REMOVED***
     environment:
       POSTGRES_USER: ***REMOVED***
       POSTGRES_PASSWORD: ***REMOVED***
       POSTGRES_DB: movies_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ***REMOVED***_data:/var/lib/***REMOVED***ql/data
     healthcheck:
