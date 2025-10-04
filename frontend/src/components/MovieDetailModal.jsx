@@ -501,12 +501,15 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                   size="lg"
                                   className="rounded-xl backdrop-blur-xl transition-all hover:scale-105"
                                   style={{
-                                    backgroundColor: localWatchlist ? `${theme.accent}22` : `${theme.bg}aa`,
-                                    borderColor: localWatchlist ? theme.accent : theme.chipBorder,
-                                    color: theme.text
+                                    backgroundColor: localWatchlist ? `${theme.accent}22` : 'rgba(255, 255, 255, 0.15)',
+                                    borderColor: localWatchlist ? theme.accent : 'rgba(255, 255, 255, 0.3)',
+                                    color: 'white'
                                   }}
                                 >
-                                  <Bookmark className={`w-5 h-5 mr-2 ${localWatchlist ? 'fill-current' : ''}`} />
+                                  <Bookmark 
+                                    className={`w-5 h-5 mr-2 ${localWatchlist ? 'fill-current' : ''}`}
+                                    style={{ color: localWatchlist ? theme.accent : 'white' }}
+                                  />
                                   {localWatchlist ? 'Saved' : 'Watchlist'}
                                 </Button>
                                 <Button
@@ -515,12 +518,15 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                   size="lg"
                                   className="rounded-xl backdrop-blur-xl transition-all hover:scale-105"
                                   style={{
-                                    backgroundColor: localFavorite ? `${theme.accent}22` : `${theme.bg}aa`,
-                                    borderColor: localFavorite ? theme.accent : theme.chipBorder,
-                                    color: theme.text
+                                    backgroundColor: localFavorite ? `${theme.accent}22` : 'rgba(255, 255, 255, 0.15)',
+                                    borderColor: localFavorite ? theme.accent : 'rgba(255, 255, 255, 0.3)',
+                                    color: 'white'
                                   }}
                                 >
-                                  <Heart className={`w-5 h-5 mr-2 ${localFavorite ? 'fill-current' : ''}`} />
+                                  <Heart 
+                                    className={`w-5 h-5 mr-2 ${localFavorite ? 'fill-current' : ''}`}
+                                    style={{ color: localFavorite ? theme.accent : 'white' }}
+                                  />
                                   {localFavorite ? 'Liked' : 'Favorite'}
                                 </Button>
                               </motion.div>
