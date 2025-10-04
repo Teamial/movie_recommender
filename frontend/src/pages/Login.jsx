@@ -19,8 +19,16 @@ const Login = () => {
     setLoading(true);
 
     try {
-      await login(username, password);
-      navigate('/');
+      const userData = await login(username, password);
+      
+      // Check if user has completed onboarding
+      const onboardingComplete = localStorage.getItem(`onboarding_complete_${userData.id}`);
+      
+      if (!onboardingComplete) {
+        navigate('/onboarding');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid credentials');
     } finally {

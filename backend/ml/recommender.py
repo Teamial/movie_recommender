@@ -1,14 +1,31 @@
 import pandas as pd
 import numpy as np
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from backend.models import Rating, Movie, User, Favorite, WatchlistItem
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.decomposition import TruncatedSVD
+from scipy.sparse import csr_matrix
 from collections import defaultdict
+from datetime import datetime
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MovieRecommender:
     def __init__(self, db: Session):
         self.db = db
         self.cold_start_threshold = 3  # Users with < 3 interactions are "cold start"
+        
+        # Matrix Factorization configuration
+        self.svd_components = 20  # Number of latent factors
+        self.svd_min_ratings = 10  # Minimum ratings needed for SVD
+        self._svd_model = None  # Cached SVD model
+        self._svd_user_factors = None  # Cached user factors
+        self._svd_item_factors = None  # Cached item factors
+        self._svd_movie_ids = None  # Movie IDs in SVD model
+        self._svd_user_ids = None  # User IDs in SVD model
     
     def _get_excluded_movie_ids(self, user_id: int):
         """Get set of movie IDs to exclude from recommendations"""
@@ -218,6 +235,338 @@ class MovieRecommender:
         total_interactions = ratings_count + favorites_count + watchlist_count
         return total_interactions < self.cold_start_threshold
     
+    def _get_contextual_features(self, user_id: int) -> dict:
+        """
+        Extract contextual features for context-aware recommendations
+        
+        Returns:
+            dict: Contains temporal patterns, recent genres, and diversity metrics
+        """
+        context = {
+            'temporal': {},
+            'recent_genres': set(),
+            'genre_saturation': {},
+            'sequential_patterns': []
+        }
+        
+        # 1. Temporal patterns
+        now = datetime.now()
+        context['temporal']['hour'] = now.hour
+        context['temporal']['day_of_week'] = now.weekday()  # 0=Monday, 6=Sunday
+        context['temporal']['is_weekend'] = now.weekday() >= 5
+        context['temporal']['time_period'] = self._get_time_period(now.hour)
+        
+        # 2. Sequential patterns (recent viewing history)
+        recent_ratings = self.db.query(Rating).filter(
+            Rating.user_id == user_id
+        ).order_by(desc(Rating.timestamp)).limit(10).all()
+        
+        if recent_ratings:
+            # Get the 5 most recent ratings
+            recent_views = recent_ratings[:5]
+            context['sequential_patterns'] = [
+                {
+                    'movie_id': r.movie_id,
+                    'rating': r.rating,
+                    'timestamp': r.timestamp
+                }
+                for r in recent_views
+            ]
+            
+            # 3. Extract recent genres for diversity calculation
+            recent_movie_ids = [r.movie_id for r in recent_ratings]
+            recent_movies = self.db.query(Movie).filter(Movie.id.in_(recent_movie_ids)).all()
+            
+            genre_count = defaultdict(int)
+            for movie in recent_movies:
+                if movie.genres:
+                    try:
+                        genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                        for genre in genres:
+                            context['recent_genres'].add(genre)
+                            genre_count[genre] += 1
+                    except:
+                        pass
+            
+            # 4. Calculate genre saturation (how much of each genre user has seen recently)
+            total_recent = len(recent_movies)
+            if total_recent > 0:
+                context['genre_saturation'] = {
+                    genre: count / total_recent 
+                    for genre, count in genre_count.items()
+                }
+        
+        return context
+    
+    def _get_time_period(self, hour: int) -> str:
+        """Categorize time of day into periods"""
+        if 5 <= hour < 12:
+            return 'morning'
+        elif 12 <= hour < 17:
+            return 'afternoon'
+        elif 17 <= hour < 21:
+            return 'evening'
+        else:
+            return 'night'
+    
+    def _apply_diversity_boost(self, movies: list, context: dict, boost_factor: float = 1.3) -> list:
+        """
+        Apply diversity boosting to recommendations
+        Boost movies from underrepresented genres
+        
+        Args:
+            movies: List of movie objects
+            context: Context dict from _get_contextual_features
+            boost_factor: Multiplier for underrepresented genres (default: 1.3)
+        
+        Returns:
+            Reordered list of movies with diversity boost applied
+        """
+        if not context['recent_genres']:
+            return movies  # No recent history, no diversity needed
+        
+        recent_genres = context['recent_genres']
+        genre_saturation = context['genre_saturation']
+        
+        # Score each movie based on genre diversity
+        movie_scores = []
+        for movie in movies:
+            diversity_score = 0.0
+            
+            if movie.genres:
+                try:
+                    genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                    movie_genre_set = set(genres)
+                    
+                    # Calculate diversity score
+                    # Higher score if movie has genres NOT in recent viewing
+                    new_genres = movie_genre_set - recent_genres
+                    diversity_score += len(new_genres) * boost_factor
+                    
+                    # Penalize oversaturated genres
+                    for genre in movie_genre_set:
+                        if genre in genre_saturation:
+                            saturation = genre_saturation[genre]
+                            # Higher saturation = lower score
+                            diversity_score -= saturation * 0.5
+                    
+                    # Bonus for introducing completely new genres
+                    if len(new_genres) > 0:
+                        diversity_score += 1.0
+                    
+                except:
+                    pass
+            
+            movie_scores.append((movie, diversity_score))
+        
+        # Sort by diversity score (descending)
+        movie_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return reordered list
+        return [movie for movie, _ in movie_scores]
+    
+    def _apply_temporal_filtering(self, movies: list, context: dict) -> list:
+        """
+        Apply temporal filtering based on time of day and day of week
+        Adjust recommendations based on viewing context
+        
+        Args:
+            movies: List of movie objects
+            context: Context dict with temporal information
+        
+        Returns:
+            Filtered/reordered list of movies
+        """
+        time_period = context['temporal'].get('time_period', 'evening')
+        is_weekend = context['temporal'].get('is_weekend', False)
+        
+        # Define genre preferences by time period
+        time_genre_preferences = {
+            'morning': ['Animation', 'Family', 'Comedy', 'Adventure'],
+            'afternoon': ['Action', 'Adventure', 'Comedy', 'Science Fiction'],
+            'evening': ['Drama', 'Thriller', 'Mystery', 'Crime'],
+            'night': ['Horror', 'Thriller', 'Mystery', 'Science Fiction']
+        }
+        
+        # Weekend vs weekday preferences
+        if is_weekend:
+            # Longer, more epic movies on weekends
+            preferred_genres = ['Action', 'Adventure', 'Science Fiction', 'Fantasy', 'Drama']
+        else:
+            # Shorter, lighter content on weekdays
+            preferred_genres = ['Comedy', 'Animation', 'Romance', 'Documentary']
+        
+        # Get time-specific preferences
+        time_preferences = time_genre_preferences.get(time_period, [])
+        
+        # Score movies based on temporal relevance
+        movie_scores = []
+        for movie in movies:
+            temporal_score = 0.0
+            
+            if movie.genres:
+                try:
+                    genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                    
+                    # Boost if matches time period preferences
+                    for genre in genres:
+                        if genre in time_preferences:
+                            temporal_score += 1.0
+                        if genre in preferred_genres:
+                            temporal_score += 0.5
+                    
+                    # Runtime consideration (if available)
+                    if hasattr(movie, 'runtime') and movie.runtime:
+                        if is_weekend and movie.runtime > 120:
+                            temporal_score += 0.5  # Boost longer movies on weekends
+                        elif not is_weekend and movie.runtime <= 120:
+                            temporal_score += 0.3  # Boost shorter movies on weekdays
+                    
+                except:
+                    pass
+            
+            movie_scores.append((movie, temporal_score))
+        
+        # Sort by temporal score (descending) while maintaining some original order
+        # Mix of temporal relevance and original ranking
+        movie_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        return [movie for movie, _ in movie_scores]
+    
+    def _build_svd_model(self):
+        """
+        Build SVD model from all ratings data
+        Uses matrix factorization to discover latent factors
+        """
+        try:
+            # Get all ratings
+            all_ratings = self.db.query(Rating).all()
+            
+            if len(all_ratings) < self.svd_min_ratings:
+                logger.warning(f"Not enough ratings ({len(all_ratings)}) for SVD. Need at least {self.svd_min_ratings}")
+                return False
+            
+            # Create user-item rating matrix
+            user_item_data = defaultdict(lambda: defaultdict(float))
+            for rating in all_ratings:
+                user_item_data[rating.user_id][rating.movie_id] = rating.rating
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(user_item_data).T.fillna(0)
+            
+            if df.empty or len(df) < 2:
+                logger.warning("Insufficient data for SVD model")
+                return False
+            
+            # Store user and movie IDs
+            self._svd_user_ids = list(df.index)
+            self._svd_movie_ids = list(df.columns)
+            
+            # Convert to sparse matrix for efficiency
+            sparse_matrix = csr_matrix(df.values)
+            
+            # Determine number of components (can't exceed matrix dimensions)
+            n_components = min(self.svd_components, min(sparse_matrix.shape) - 1)
+            
+            if n_components < 2:
+                logger.warning("Matrix too small for SVD")
+                return False
+            
+            # Perform SVD
+            svd = TruncatedSVD(n_components=n_components, random_state=42)
+            self._svd_user_factors = svd.fit_transform(sparse_matrix)
+            self._svd_item_factors = svd.components_.T
+            self._svd_model = svd
+            
+            logger.info(f"SVD model built successfully with {n_components} components")
+            logger.info(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.2%}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error building SVD model: {e}")
+            return False
+    
+    def get_svd_recommendations(self, user_id: int, n_recommendations: int = 10):
+        """
+        Matrix Factorization recommendations using SVD
+        
+        SVD decomposes the user-item matrix into latent factors, capturing
+        hidden patterns in user preferences and movie characteristics.
+        
+        Benefits over simple cosine similarity:
+        - Handles sparsity better
+        - Discovers latent features (e.g., "action-comedy blend")
+        - More accurate predictions
+        - Better scalability
+        """
+        # Build or use cached SVD model
+        if self._svd_model is None:
+            if not self._build_svd_model():
+                # Fall back to item-based CF if SVD fails
+                logger.warning("SVD model unavailable, falling back to item-based CF")
+                return self.get_item_based_recommendations(user_id, n_recommendations)
+        
+        # Check if user exists in the model
+        if user_id not in self._svd_user_ids:
+            # For new users not in training data, fall back
+            logger.info(f"User {user_id} not in SVD model, falling back")
+            return self.get_item_based_recommendations(user_id, n_recommendations)
+        
+        try:
+            # Get user's latent factors
+            user_idx = self._svd_user_ids.index(user_id)
+            user_factors = self._svd_user_factors[user_idx]
+            
+            # Calculate predicted ratings for all movies
+            predicted_ratings = np.dot(user_factors, self._svd_item_factors.T)
+            
+            # Get movies to exclude (already seen/rated)
+            excluded_ids = self._get_excluded_movie_ids(user_id)
+            user_ratings = self.db.query(Rating).filter(Rating.user_id == user_id).all()
+            user_favorites = self.db.query(Favorite).filter(Favorite.user_id == user_id).all()
+            user_watchlist = self.db.query(WatchlistItem).filter(WatchlistItem.user_id == user_id).all()
+            
+            seen_movie_ids = set([r.movie_id for r in user_ratings] + 
+                                 [f.movie_id for f in user_favorites] + 
+                                 [w.movie_id for w in user_watchlist])
+            seen_movie_ids.update(excluded_ids)
+            
+            # Sort movies by predicted rating
+            movie_scores = []
+            for idx, movie_id in enumerate(self._svd_movie_ids):
+                if movie_id not in seen_movie_ids:
+                    movie_scores.append((movie_id, predicted_ratings[idx]))
+            
+            # Sort by predicted rating
+            movie_scores.sort(key=lambda x: x[1], reverse=True)
+            top_movie_ids = [movie_id for movie_id, _ in movie_scores[:n_recommendations]]
+            
+            # Fetch movies from database
+            movies = self.db.query(Movie).filter(Movie.id.in_(top_movie_ids)).all()
+            
+            # Maintain order by score
+            movie_dict = {m.id: m for m in movies}
+            recommended_movies = [movie_dict[mid] for mid in top_movie_ids if mid in movie_dict]
+            
+            logger.info(f"SVD recommendations generated for user {user_id}: {len(recommended_movies)} movies")
+            
+            return recommended_movies
+            
+        except Exception as e:
+            logger.error(f"Error generating SVD recommendations: {e}")
+            # Fall back to item-based CF
+            return self.get_item_based_recommendations(user_id, n_recommendations)
+    
+    def invalidate_svd_cache(self):
+        """Invalidate cached SVD model (call when ratings are updated)"""
+        self._svd_model = None
+        self._svd_user_factors = None
+        self._svd_item_factors = None
+        self._svd_movie_ids = None
+        self._svd_user_ids = None
+        logger.info("SVD cache invalidated")
+    
     def get_item_based_recommendations(self, user_id: int, n_recommendations: int = 10):
         """
         Item-based collaborative filtering - better for sparse data
@@ -407,12 +756,29 @@ class MovieRecommender:
         scored_movies.sort(key=lambda x: x[1], reverse=True)
         return [movie for movie, _ in scored_movies[:n_recommendations]]
     
-    def get_hybrid_recommendations(self, user_id: int, n_recommendations: int = 10):
+    def get_hybrid_recommendations(self, user_id: int, n_recommendations: int = 10, 
+                                   use_context: bool = True):
         """
-        Intelligent hybrid recommendations with cold start handling
+        Intelligent hybrid recommendations with cold start handling and context-awareness
         Automatically selects best strategy based on user data
+        
+        Args:
+            user_id: User ID to generate recommendations for
+            n_recommendations: Number of recommendations to return
+            use_context: Whether to apply contextual filtering (temporal, diversity)
+        
+        Returns:
+            List of recommended Movie objects
         """
         user = self.db.query(User).filter(User.id == user_id).first()
+        
+        # Extract contextual features
+        context = None
+        if use_context:
+            context = self._get_contextual_features(user_id)
+            logger.info(f"Context for user {user_id}: {context['temporal']['time_period']}, "
+                       f"weekend={context['temporal']['is_weekend']}, "
+                       f"recent_genres={len(context['recent_genres'])}")
         
         # Check if cold start user
         is_cold_start = self._is_cold_start_user(user_id)
@@ -446,28 +812,117 @@ class MovieRecommender:
                         recommendations.append(movie)
                         seen_ids.add(movie.id)
             
+            # Apply context-aware adjustments for cold start users too
+            if use_context and context and len(recommendations) > 0:
+                # Apply temporal filtering (helps even for cold start)
+                recommendations = self._apply_temporal_filtering(recommendations, context)
+                logger.info(f"Applied temporal filtering to cold start recommendations")
+            
             return recommendations
         
         else:
-            # Standard hybrid approach for users with sufficient data
-            # Use item-based CF (better for sparse data) + content-based
+            # Advanced hybrid approach for users with sufficient data
+            # Primary: SVD (Matrix Factorization) - best accuracy
+            # Secondary: Item-based CF - good for sparse data
+            # Tertiary: Content-based - diversity and cold items
+            
+            # Get recommendations from multiple strategies
+            svd_movies = self.get_svd_recommendations(user_id, n_recommendations)
             item_movies = self.get_item_based_recommendations(user_id, n_recommendations)
             content_movies = self.get_content_based_recommendations(user_id, n_recommendations)
             
             seen_ids = set()
             hybrid_recommendations = []
             
-            # Alternate between strategies
-            for i in range(max(len(item_movies), len(content_movies))):
-                if i < len(item_movies) and item_movies[i].id not in seen_ids:
-                    hybrid_recommendations.append(item_movies[i])
-                    seen_ids.add(item_movies[i].id)
+            # Weighting strategy:
+            # - 60% from SVD (most accurate)
+            # - 25% from Item-based CF (complementary)
+            # - 15% from Content-based (diversity)
+            
+            svd_weight = int(n_recommendations * 0.6)
+            item_weight = int(n_recommendations * 0.25)
+            content_weight = n_recommendations - svd_weight - item_weight
+            
+            # Add SVD recommendations (primary)
+            for movie in svd_movies[:svd_weight]:
+                if movie.id not in seen_ids:
+                    hybrid_recommendations.append(movie)
+                    seen_ids.add(movie.id)
+            
+            # Add Item-based recommendations (secondary)
+            for movie in item_movies[:item_weight]:
+                if movie.id not in seen_ids and len(hybrid_recommendations) < n_recommendations:
+                    hybrid_recommendations.append(movie)
+                    seen_ids.add(movie.id)
+            
+            # Add Content-based recommendations (tertiary, for diversity)
+            for movie in content_movies[:content_weight]:
+                if movie.id not in seen_ids and len(hybrid_recommendations) < n_recommendations:
+                    hybrid_recommendations.append(movie)
+                    seen_ids.add(movie.id)
+            
+            # Fill remaining slots if needed (round-robin)
+            if len(hybrid_recommendations) < n_recommendations:
+                all_remaining = [m for m in svd_movies + item_movies + content_movies 
+                                if m.id not in seen_ids]
+                for movie in all_remaining:
+                    if len(hybrid_recommendations) >= n_recommendations:
+                        break
+                    if movie.id not in seen_ids:
+                        hybrid_recommendations.append(movie)
+                        seen_ids.add(movie.id)
+            
+            logger.info(f"Hybrid recommendations: {len(hybrid_recommendations)} movies "
+                       f"(SVD: {min(svd_weight, len([m for m in hybrid_recommendations if m in svd_movies]))}, "
+                       f"Item: {len([m for m in hybrid_recommendations if m in item_movies])}, "
+                       f"Content: {len([m for m in hybrid_recommendations if m in content_movies])})")
+            
+            # Apply context-aware adjustments
+            if use_context and context:
+                # Apply temporal filtering
+                hybrid_recommendations = self._apply_temporal_filtering(
+                    hybrid_recommendations, 
+                    context
+                )
+                logger.info(f"Applied temporal filtering for {context['temporal']['time_period']}")
                 
-                if i < len(content_movies) and content_movies[i].id not in seen_ids:
-                    hybrid_recommendations.append(content_movies[i])
-                    seen_ids.add(content_movies[i].id)
-                
-                if len(hybrid_recommendations) >= n_recommendations:
-                    break
+                # Apply diversity boosting
+                hybrid_recommendations = self._apply_diversity_boost(
+                    hybrid_recommendations, 
+                    context
+                )
+                logger.info(f"Applied diversity boost (recent genres: {len(context['recent_genres'])})")
             
             return hybrid_recommendations[:n_recommendations]
+    
+    def get_context_aware_recommendations(self, user_id: int, n_recommendations: int = 10):
+        """
+        Get context-aware recommendations with detailed context information
+        
+        This is a wrapper around get_hybrid_recommendations that returns both
+        recommendations and the context used to generate them.
+        
+        Returns:
+            dict: {
+                'recommendations': List of Movie objects,
+                'context': Context dict with temporal and diversity info
+            }
+        """
+        context = self._get_contextual_features(user_id)
+        recommendations = self.get_hybrid_recommendations(
+            user_id, 
+            n_recommendations,
+            use_context=True
+        )
+        
+        return {
+            'recommendations': recommendations,
+            'context': {
+                'time_period': context['temporal']['time_period'],
+                'is_weekend': context['temporal']['is_weekend'],
+                'hour': context['temporal']['hour'],
+                'recent_genres': list(context['recent_genres']),
+                'genre_saturation': context['genre_saturation'],
+                'recent_movies_count': len(context['sequential_patterns'])
+            }
+        }

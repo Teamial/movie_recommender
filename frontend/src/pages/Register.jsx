@@ -39,7 +39,7 @@ const Register = () => {
         email: formData.email,
         password: formData.password
       });
-      navigate('/');
+      navigate('/onboarding');
     } catch (err) {
       setError(err.response?.data?.detail || 'Registration failed');
     } finally {

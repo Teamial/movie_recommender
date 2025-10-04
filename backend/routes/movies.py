@@ -65,19 +65,53 @@ def get_movies(
 def get_recommendations(
     user_id: int = Query(...),
     limit: int = Query(10, ge=1, le=50),
+    use_context: bool = Query(True, description="Enable context-aware recommendations"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get personalized movie recommendations for a user"""
+    """
+    Get personalized movie recommendations for a user
+    
+    Context-aware features:
+    - Temporal filtering: Adjusts recommendations based on time of day and day of week
+    - Diversity boosting: Prevents genre saturation by recommending varied content
+    - Sequential patterns: Considers recent viewing history
+    """
     
     # Verify the user is requesting their own recommendations
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to view these recommendations")
     
     recommender = MovieRecommender(db)
-    recommendations = recommender.get_hybrid_recommendations(user_id, limit)
+    recommendations = recommender.get_hybrid_recommendations(user_id, limit, use_context=use_context)
     
     return recommendations
+
+@router.get("/recommendations/context")
+def get_context_aware_recommendations(
+    user_id: int = Query(...),
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get context-aware recommendations with detailed context information
+    
+    Returns recommendations along with the context used to generate them:
+    - Time period (morning, afternoon, evening, night)
+    - Weekend status
+    - Recent genres watched
+    - Genre saturation levels
+    """
+    
+    # Verify the user is requesting their own recommendations
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to view these recommendations")
+    
+    recommender = MovieRecommender(db)
+    result = recommender.get_context_aware_recommendations(user_id, limit)
+    
+    return result
 
 @router.get("/top-rated", response_model=List[Movie])
 def get_top_rated(
