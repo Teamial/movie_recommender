@@ -1,4 +1,4 @@
-import { X, Star, Play, Clock, Calendar, Plus, ThumbsUp, Share2, Film, DollarSign, Tag, Users as UsersIcon, Heart, Bookmark, TrendingUp, Eye } from 'lucide-react';
+import { X, Star, Play, Clock, Calendar, Heart, Bookmark, TrendingUp, Eye, Tag, Sparkles } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { addToWatchlist, removeFromWatchlist, addFavorite, removeFavorite, createRating } from '../services/api';
@@ -10,8 +10,8 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getLanguageName, formatViews, getTrendingRank } from '@/utils/movieHelpers';
 
-// Color extraction function
-const extractDominantColor = (imageUrl) => {
+// Enhanced color palette extraction
+const extractMoviePalette = (imageUrl) => {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
@@ -21,48 +21,184 @@ const extractDominantColor = (imageUrl) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        resolve('rgb(20, 20, 30)');
+        resolve(getDefaultPalette());
         return;
       }
       
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
+      // Scale down for performance
+      const maxSize = 150;
+      const scale = Math.min(maxSize / img.width, maxSize / img.height);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       try {
-        const imageData = ctx.getImageData(0, canvas.height - 50, canvas.width, 50);
-        const data = imageData.data;
-        let r = 0, g = 0, b = 0;
-        
-        for (let i = 0; i < data.length; i += 4) {
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
-        }
-        
-        const pixelCount = data.length / 4;
-        r = Math.floor(r / pixelCount);
-        g = Math.floor(g / pixelCount);
-        b = Math.floor(b / pixelCount);
-        
-        // Darken the color
-        const darkenFactor = 0.3;
-        r = Math.floor(r * darkenFactor);
-        g = Math.floor(g * darkenFactor);
-        b = Math.floor(b * darkenFactor);
-        
-        resolve(`rgb(${r}, ${g}, ${b})`);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const palette = computePalette(imageData);
+        resolve(palette);
       } catch (error) {
-        console.error('Error extracting color:', error);
-        resolve('rgb(20, 20, 30)');
+        console.error('Error extracting palette:', error);
+        resolve(getDefaultPalette());
       }
     };
     
-    img.onerror = () => {
-      resolve('rgb(20, 20, 30)');
-    };
+    img.onerror = () => resolve(getDefaultPalette());
   });
 };
+
+// Compute vibrant palette from image data
+const computePalette = (imageData) => {
+  const pixels = [];
+  const data = imageData.data;
+  
+  // Sample pixels (every 10th for performance)
+  for (let i = 0; i < data.length; i += 40) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const a = data[i + 3];
+    
+    if (a > 125) { // Skip transparent
+      pixels.push({ r, g, b });
+    }
+  }
+  
+  // Find vibrant, muted, dark colors
+  let vibrant = { r: 0, g: 0, b: 0, saturation: 0 };
+  let darkMuted = { r: 0, g: 0, b: 0, lightness: 100 };
+  let totalR = 0, totalG = 0, totalB = 0;
+  
+  pixels.forEach(pixel => {
+    totalR += pixel.r;
+    totalG += pixel.g;
+    totalB += pixel.b;
+    
+    const hsl = rgbToHsl(pixel.r, pixel.g, pixel.b);
+    
+    // Find most vibrant color
+    if (hsl.s > vibrant.saturation && hsl.l > 0.3 && hsl.l < 0.7) {
+      vibrant = { ...pixel, saturation: hsl.s };
+    }
+    
+    // Find dark muted color
+    if (hsl.l < darkMuted.lightness && hsl.l < 0.4 && hsl.s < 0.5) {
+      darkMuted = { ...pixel, lightness: hsl.l };
+    }
+  });
+  
+  // Average color for background
+  const avg = {
+    r: Math.floor(totalR / pixels.length),
+    g: Math.floor(totalG / pixels.length),
+    b: Math.floor(totalB / pixels.length)
+  };
+  
+  // Build theme palette
+  const bgColor = darkMuted.lightness < 50 ? darkMuted : darken(avg, 0.7);
+  const accentColor = vibrant.saturation > 0 ? vibrant : lighten(avg, 1.5);
+  const textColor = getLuminance(bgColor) < 0.5 ? { r: 240, g: 243, b: 246 } : { r: 15, g: 26, b: 34 };
+  
+  return {
+    bg: rgbToString(bgColor),
+    bg2: rgbToString(lighten(bgColor, 1.15)),
+    text: rgbToString(textColor),
+    muted: rgbToString(adjustAlpha(textColor, 0.65)),
+    accent: rgbToString(ensureContrast(accentColor, bgColor)),
+    chipBorder: rgbToString(mix(textColor, bgColor, 0.35)),
+    overlayAlpha: 0.45
+  };
+};
+
+// Helper color functions
+const rgbToHsl = (r, g, b) => {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  
+  return { h, s, l };
+};
+
+const getLuminance = (rgb) => {
+  const { r, g, b } = rgb;
+  const [rs, gs, bs] = [r, g, b].map(c => {
+    c = c / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+};
+
+const darken = (rgb, factor) => ({
+  r: Math.floor(rgb.r * factor),
+  g: Math.floor(rgb.g * factor),
+  b: Math.floor(rgb.b * factor)
+});
+
+const lighten = (rgb, factor) => ({
+  r: Math.min(255, Math.floor(rgb.r * factor)),
+  g: Math.min(255, Math.floor(rgb.g * factor)),
+  b: Math.min(255, Math.floor(rgb.b * factor))
+});
+
+const mix = (rgb1, rgb2, amount) => ({
+  r: Math.floor(rgb1.r * amount + rgb2.r * (1 - amount)),
+  g: Math.floor(rgb1.g * amount + rgb2.g * (1 - amount)),
+  b: Math.floor(rgb1.b * amount + rgb2.b * (1 - amount))
+});
+
+const adjustAlpha = (rgb, alpha) => ({
+  r: Math.floor(rgb.r),
+  g: Math.floor(rgb.g),
+  b: Math.floor(rgb.b),
+  a: alpha
+});
+
+const rgbToString = (rgb) => {
+  if (rgb.a !== undefined) {
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${rgb.a})`;
+  }
+  return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+};
+
+const ensureContrast = (fgRgb, bgRgb, targetRatio = 4.5) => {
+  let fg = { ...fgRgb };
+  const bgLum = getLuminance(bgRgb);
+  
+  for (let i = 0; i < 10; i++) {
+    const fgLum = getLuminance(fg);
+    const contrast = bgLum > fgLum 
+      ? (bgLum + 0.05) / (fgLum + 0.05)
+      : (fgLum + 0.05) / (bgLum + 0.05);
+    
+    if (contrast >= targetRatio) break;
+    
+    // Adjust lightness
+    fg = bgLum > 0.5 ? darken(fg, 0.9) : lighten(fg, 1.15);
+  }
+  
+  return fg;
+};
+
+const getDefaultPalette = () => ({
+  bg: 'rgb(15, 26, 34)',
+  bg2: 'rgb(21, 33, 43)',
+  text: 'rgb(238, 243, 246)',
+  muted: 'rgba(159, 179, 195, 0.65)',
+  accent: 'rgb(255, 212, 59)',
+  chipBorder: 'rgb(110, 133, 150)',
+  overlayAlpha: 0.45
+});
 
 const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, userRating, onUpdate }) => {
   const { user } = useAuth();
@@ -70,7 +206,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
   const [localWatchlist, setLocalWatchlist] = useState(isInWatchlist);
   const [localRating, setLocalRating] = useState(userRating);
   const [hoverRating, setHoverRating] = useState(0);
-  const [dominantColor, setDominantColor] = useState('rgb(20, 20, 30)');
+  const [theme, setTheme] = useState(getDefaultPalette());
 
   useEffect(() => {
     setLocalFavorite(isFavorite);
@@ -80,8 +216,8 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
 
   useEffect(() => {
     if (movie?.backdrop_url) {
-      extractDominantColor(movie.backdrop_url).then(color => {
-        setDominantColor(color);
+      extractMoviePalette(movie.backdrop_url).then(palette => {
+        setTheme(palette);
       });
     }
   }, [movie?.backdrop_url]);
@@ -164,21 +300,36 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
     <AnimatePresence>
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" 
+          className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4" 
           onClick={onClose}
+          style={{
+            '--theme-bg': theme.bg,
+            '--theme-bg-2': theme.bg2,
+            '--theme-text': theme.text,
+            '--theme-muted': theme.muted,
+            '--theme-accent': theme.accent,
+            '--theme-chip-border': theme.chipBorder,
+            '--theme-overlay-alpha': theme.overlayAlpha
+          }}
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="relative w-full max-w-5xl h-[90vh] bg-background rounded-2xl overflow-hidden shadow-2xl"
+            initial={{ opacity: 0, scale: 0.96, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 20 }}
+            transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="relative w-full max-w-6xl h-[92vh] rounded-3xl overflow-hidden shadow-2xl"
+            style={{ backgroundColor: theme.bg }}
             onClick={(e) => e.stopPropagation()}
           >
             <Button
               variant="ghost"
               size="icon"
-              className="absolute top-4 right-4 z-50 bg-black/50 hover:bg-black/70 text-white rounded-full"
+              className="absolute top-4 right-4 z-50 rounded-full backdrop-blur-xl transition-all hover:scale-110"
+              style={{ 
+                backgroundColor: `${theme.bg}dd`,
+                color: theme.text,
+                border: `1px solid ${theme.chipBorder}`
+              }}
               onClick={onClose}
             >
               <X className="h-5 w-5" />
@@ -186,181 +337,329 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
 
             <ScrollArea className="h-full">
               <div className="relative">
-                {/* Hero Section with Backdrop */}
-                <div className="relative h-[500px] overflow-hidden">
-                  <div 
+                {/* Cinematic Hero Section */}
+                <div className="relative h-[65vh] overflow-hidden">
+                  {/* Background Image */}
+                  <motion.div 
+                    initial={{ scale: 1.1 }}
+                    animate={{ scale: 1 }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
                     className="absolute inset-0 bg-cover bg-center"
                     style={{ backgroundImage: `url(${movie.backdrop_url || movie.poster_url})` }}
+                  />
+                  
+                  {/* Themed Gradient Overlay */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{
+                      background: `linear-gradient(90deg, ${theme.bg} 0%, rgba(0,0,0,${theme.overlayAlpha}) 35%, transparent 70%)`
+                    }}
                   />
                   <div 
                     className="absolute inset-0"
                     style={{
-                      background: `linear-gradient(to bottom, transparent 0%, transparent 50%, ${dominantColor} 100%)`
+                      background: `linear-gradient(to bottom, transparent 0%, transparent 40%, ${theme.bg} 100%)`
                     }}
                   />
                   
-                  <div className="absolute bottom-0 left-0 right-0 p-8">
-                    <div className="flex items-end gap-6">
-                      {/* Poster */}
-                      {movie.poster_url && (
-                        <img 
-                          src={movie.poster_url} 
-                          alt={movie.title}
-                          className="w-48 h-72 object-cover rounded-lg shadow-2xl border-2 border-white/10"
-                        />
-                      )}
-                      
-                      {/* Title and Metadata */}
-                      <div className="flex-1 pb-4">
-                        <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 drop-shadow-lg">
-                          {movie.title}
-                        </h1>
-                        {movie.tagline && (
-                          <p className="text-gray-200 text-lg italic mb-4 drop-shadow-md">
-                            &ldquo;{movie.tagline}&rdquo;
-                          </p>
+                  {/* Content positioned over gradient */}
+                  <div className="absolute bottom-0 left-0 right-0 p-6 md:p-10">
+                    <div className="max-w-7xl mx-auto">
+                      <div className="flex flex-col md:flex-row items-end gap-6 md:gap-8">
+                        {/* Poster */}
+                        {movie.poster_url && (
+                          <motion.img 
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2, duration: 0.5 }}
+                            src={movie.poster_url} 
+                            alt={movie.title}
+                            className="w-44 md:w-56 h-64 md:h-80 object-cover rounded-2xl shadow-2xl ring-2 ring-white/10"
+                          />
                         )}
                         
-                        {/* Quick metadata */}
-                        <div className="flex flex-wrap items-center gap-4 mb-4">
-                          {movie.vote_average && (
-                            <div className="flex items-center gap-2 bg-yellow-500/20 backdrop-blur-sm px-3 py-1 rounded-full border border-yellow-500/30">
-                              <Star className="h-5 w-5 text-yellow-400 fill-yellow-400" />
-                              <span className="text-white text-lg font-bold">
-                                {movie.vote_average.toFixed(1)}
-                              </span>
-                            </div>
-                          )}
-                          {releaseYear !== 'N/A' && (
-                            <div className="flex items-center gap-2 text-white">
-                              <Calendar className="w-5 h-5" />
-                              <span className="text-lg font-semibold">{releaseYear}</span>
-                            </div>
-                          )}
-                          {movie.runtime && (
-                            <div className="flex items-center gap-2 text-white">
-                              <Clock className="w-5 h-5" />
-                              <span className="text-lg">{formatRuntime(movie.runtime)}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Genre Tags */}
-                        <div className="flex flex-wrap gap-2 mb-6">
-                          {genres.slice(0, 4).map((genre, index) => (
-                            <Badge
-                              key={index}
-                              className="px-3 py-1 bg-white/10 backdrop-blur-md text-white hover:bg-white/20 border border-white/20 rounded-lg text-sm"
+                        {/* Title and Metadata */}
+                        <div className="flex-1 pb-2 md:pb-4">
+                          <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.3, duration: 0.5 }}
+                          >
+                            {/* Meta Ribbon */}
+                            <div 
+                              className="flex flex-wrap items-center gap-2 mb-3 text-xs tracking-wider uppercase font-medium"
+                              style={{ color: theme.muted }}
                             >
-                              {genre}
-                            </Badge>
-                          ))}
-                        </div>
+                              {releaseYear !== 'N/A' && <span>{releaseYear}</span>}
+                              {movie.runtime && (
+                                <>
+                                  <span>•</span>
+                                  <span>{formatRuntime(movie.runtime)}</span>
+                                </>
+                              )}
+                              {movie.original_language && (
+                                <>
+                                  <span>•</span>
+                                  <span>{getLanguageName(movie.original_language)}</span>
+                                </>
+                              )}
+                            </div>
 
-                        {/* Action Buttons */}
-                        {user && (
-                          <div className="flex gap-3">
-                            {movie.trailer_key && (
-                              <Button
-                                asChild
-                                className="rounded-lg bg-white text-gray-900 hover:bg-gray-100 font-semibold"
-                                size="lg"
+                            {/* Title */}
+                            <h1 
+                              className="text-4xl md:text-6xl font-bold mb-3 tracking-tight leading-none"
+                              style={{ 
+                                color: theme.text,
+                                textShadow: '0 2px 12px rgba(0,0,0,0.5)'
+                              }}
+                            >
+                              {movie.title}
+                            </h1>
+                            
+                            {movie.tagline && (
+                              <p 
+                                className="text-base md:text-lg italic mb-4 max-w-2xl leading-relaxed"
+                                style={{ 
+                                  color: theme.muted,
+                                  textShadow: '0 1px 4px rgba(0,0,0,0.4)'
+                                }}
                               >
-                                <a
-                                  href={`https://www.youtube.com/watch?v=${movie.trailer_key}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2"
-                                >
-                                  <Play className="w-5 h-5 fill-current" />
-                                  Watch Trailer
-                                </a>
-                              </Button>
+                                &ldquo;{movie.tagline}&rdquo;
+                              </p>
                             )}
-                            <Button
-                              onClick={handleWatchlist}
-                              variant="outline"
-                              size="lg"
-                              className={`rounded-lg backdrop-blur-md ${
-                                localWatchlist
-                                  ? 'bg-primary/20 text-white border-primary hover:bg-primary/30'
-                                  : 'bg-white/10 text-white border-white/30 hover:bg-white/20'
-                              }`}
-                            >
-                              <Bookmark className={`w-5 h-5 mr-2 ${localWatchlist ? 'fill-current' : ''}`} />
-                              {localWatchlist ? 'In Watchlist' : 'Watchlist'}
-                            </Button>
-                            <Button
-                              onClick={handleFavorite}
-                              variant="outline"
-                              size="lg"
-                              className={`rounded-lg backdrop-blur-md ${
-                                localFavorite
-                                  ? 'bg-red-500/30 text-white border-red-500 hover:bg-red-500/40'
-                                  : 'bg-white/10 text-white border-white/30 hover:bg-white/20'
-                              }`}
-                            >
-                              <Heart className={`w-5 h-5 mr-2 ${localFavorite ? 'fill-current' : ''}`} />
-                              {localFavorite ? 'Favorited' : 'Favorite'}
-                            </Button>
-                          </div>
-                        )}
+                            
+                            {/* Rating Badge & Meta */}
+                            <div className="flex flex-wrap items-center gap-3 mb-5">
+                              {movie.vote_average && (
+                                <div 
+                                  className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-xl shadow-lg ring-1"
+                                  style={{ 
+                                    backgroundColor: `${theme.accent}22`,
+                                    borderColor: `${theme.accent}55`,
+                                    color: theme.text
+                                  }}
+                                >
+                                  <Star 
+                                    className="h-5 w-5" 
+                                    style={{ color: theme.accent }}
+                                    fill={theme.accent}
+                                  />
+                                  <span className="text-lg font-bold">
+                                    {movie.vote_average.toFixed(1)}
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {/* Genre Chips */}
+                              {genres.slice(0, 3).map((genre, index) => (
+                                <div
+                                  key={index}
+                                  className="px-3 py-1.5 rounded-full backdrop-blur-xl text-sm font-medium transition-all hover:scale-105 cursor-default"
+                                  style={{ 
+                                    backgroundColor: `${theme.bg}cc`,
+                                    border: `1px solid ${theme.chipBorder}`,
+                                    color: theme.text
+                                  }}
+                                >
+                                  {genre}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Action Buttons */}
+                            {user && (
+                              <motion.div 
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.5, duration: 0.4 }}
+                                className="flex flex-wrap gap-3"
+                              >
+                                {movie.trailer_key && (
+                                  <Button
+                                    asChild
+                                    className="rounded-xl font-semibold shadow-lg hover:scale-105 transition-transform"
+                                    style={{
+                                      backgroundColor: theme.accent,
+                                      color: theme.bg,
+                                    }}
+                                    size="lg"
+                                  >
+                                    <a
+                                      href={`https://www.youtube.com/watch?v=${movie.trailer_key}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2"
+                                    >
+                                      <Play className="w-5 h-5 fill-current" />
+                                      Watch Trailer
+                                    </a>
+                                  </Button>
+                                )}
+                                <Button
+                                  onClick={handleWatchlist}
+                                  variant="outline"
+                                  size="lg"
+                                  className="rounded-xl backdrop-blur-xl transition-all hover:scale-105"
+                                  style={{
+                                    backgroundColor: localWatchlist ? `${theme.accent}22` : `${theme.bg}aa`,
+                                    borderColor: localWatchlist ? theme.accent : theme.chipBorder,
+                                    color: theme.text
+                                  }}
+                                >
+                                  <Bookmark className={`w-5 h-5 mr-2 ${localWatchlist ? 'fill-current' : ''}`} />
+                                  {localWatchlist ? 'Saved' : 'Watchlist'}
+                                </Button>
+                                <Button
+                                  onClick={handleFavorite}
+                                  variant="outline"
+                                  size="lg"
+                                  className="rounded-xl backdrop-blur-xl transition-all hover:scale-105"
+                                  style={{
+                                    backgroundColor: localFavorite ? `${theme.accent}22` : `${theme.bg}aa`,
+                                    borderColor: localFavorite ? theme.accent : theme.chipBorder,
+                                    color: theme.text
+                                  }}
+                                >
+                                  <Heart className={`w-5 h-5 mr-2 ${localFavorite ? 'fill-current' : ''}`} />
+                                  {localFavorite ? 'Liked' : 'Favorite'}
+                                </Button>
+                              </motion.div>
+                            )}
+                          </motion.div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Content Area with Extracted Color */}
+                {/* Content Area - Theme Driven */}
                 <div 
-                  className="transition-colors duration-300"
-                  style={{
-                    background: `linear-gradient(to bottom, ${dominantColor} 0%, hsl(var(--background)) 20%)`
-                  }}
+                  className="transition-colors duration-500"
+                  style={{ backgroundColor: theme.bg }}
                 >
-                  <div className="px-8 pt-8 pb-16 space-y-10">
-                    {/* Synopsis - Full Width */}
-                    <div className="max-w-4xl">
-                      <h2 className="text-2xl font-bold mb-4 text-foreground">Synopsis</h2>
-                      <p className="text-muted-foreground leading-relaxed text-base">
+                  <div className="px-6 md:px-10 pt-12 pb-16 space-y-12 max-w-7xl mx-auto">
+                    
+                    {/* Synopsis Section */}
+                    <motion.div 
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.6, duration: 0.5 }}
+                      className="max-w-4xl"
+                    >
+                      <div className="flex items-center gap-3 mb-5">
+                        <div 
+                          className="w-1 h-6 rounded-full"
+                          style={{ backgroundColor: theme.accent }}
+                        />
+                        <h2 
+                          className="text-2xl font-bold tracking-tight"
+                          style={{ color: theme.text }}
+                        >
+                          Synopsis
+                        </h2>
+                      </div>
+                      <p 
+                        className="text-lg leading-relaxed"
+                        style={{ color: theme.muted }}
+                      >
                         {movie.overview || 'No overview available.'}
                       </p>
-                    </div>
+                    </motion.div>
 
                     {/* Main Content Grid */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 lg:gap-12">
                       {/* Left Column - Cast & Rating */}
-                      <div className="lg:col-span-2 space-y-10">
-                        {/* Cast */}
+                      <div className="lg:col-span-2 space-y-12">
+                        
+                        {/* Cast Section */}
                         {cast.length > 0 && (
-                          <div>
-                            <h2 className="text-2xl font-bold mb-6 text-foreground">Cast</h2>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                          <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.7, duration: 0.5 }}
+                          >
+                            <div className="flex items-center gap-3 mb-6">
+                              <Sparkles 
+                                className="w-5 h-5"
+                                style={{ color: theme.accent }}
+                              />
+                              <h2 
+                                className="text-2xl font-bold"
+                                style={{ color: theme.text }}
+                              >
+                                Cast
+                              </h2>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                               {cast.slice(0, 6).map((actor, index) => (
-                                <div key={index} className="flex items-center gap-4">
-                                  <Avatar className="h-16 w-16 border-2 border-border">
+                                <motion.div 
+                                  key={index}
+                                  initial={{ opacity: 0, x: -10 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: 0.8 + index * 0.05, duration: 0.3 }}
+                                  className="flex items-center gap-4 p-3 rounded-xl transition-all hover:scale-102"
+                                  style={{
+                                    backgroundColor: `${theme.bg2}88`,
+                                    border: `1px solid ${theme.chipBorder}55`
+                                  }}
+                                >
+                                  <Avatar className="h-14 w-14 ring-2" style={{ ringColor: theme.chipBorder }}>
                                     <AvatarImage 
                                       src={actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : ''} 
                                       alt={actor.name}
                                       className="object-cover"
                                     />
-                                    <AvatarFallback className="text-sm font-semibold">
+                                    <AvatarFallback 
+                                      className="text-sm font-semibold"
+                                      style={{ 
+                                        backgroundColor: theme.bg2,
+                                        color: theme.text 
+                                      }}
+                                    >
                                       {actor.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
                                     </AvatarFallback>
                                   </Avatar>
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-foreground truncate">{actor.name}</p>
-                                    <p className="text-sm text-muted-foreground truncate">{actor.character}</p>
+                                    <p 
+                                      className="font-semibold truncate"
+                                      style={{ color: theme.text }}
+                                    >
+                                      {actor.name}
+                                    </p>
+                                    <p 
+                                      className="text-sm truncate"
+                                      style={{ color: theme.muted }}
+                                    >
+                                      {actor.character}
+                                    </p>
                                   </div>
-                                </div>
+                                </motion.div>
                               ))}
                             </div>
-                          </div>
+                          </motion.div>
                         )}
 
                         {/* Rate This Movie */}
                         {user && (
-                          <div className="pt-6">
-                            <h2 className="text-2xl font-bold mb-5 text-foreground">Rate This Movie</h2>
+                          <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.9, duration: 0.5 }}
+                            className="pt-6"
+                          >
+                            <div className="flex items-center gap-3 mb-6">
+                              <Star 
+                                className="w-5 h-5"
+                                style={{ color: theme.accent }}
+                                fill={theme.accent}
+                              />
+                              <h2 
+                                className="text-2xl font-bold"
+                                style={{ color: theme.text }}
+                              >
+                                Rate This Movie
+                              </h2>
+                            </div>
                             <div className="flex gap-3">
                               {[1, 2, 3, 4, 5].map((rating) => (
                                 <button
@@ -368,150 +667,331 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                   onMouseEnter={() => setHoverRating(rating)}
                                   onMouseLeave={() => setHoverRating(0)}
                                   onClick={() => handleRating(rating)}
-                                  className="transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary rounded-full p-1"
+                                  className="transition-all hover:scale-110 focus:outline-none focus:ring-2 rounded-full p-2"
+                                  style={{
+                                    focusRingColor: theme.accent
+                                  }}
                                 >
                                   <Star
-                                    className={`w-12 h-12 ${
+                                    className={`w-12 h-12 transition-all ${
                                       rating <= (hoverRating || localRating)
-                                        ? 'text-yellow-400 fill-yellow-400'
-                                        : 'text-muted-foreground/30'
+                                        ? 'drop-shadow-lg'
+                                        : 'opacity-30'
                                     }`}
+                                    style={{
+                                      color: rating <= (hoverRating || localRating) ? theme.accent : theme.muted,
+                                      fill: rating <= (hoverRating || localRating) ? theme.accent : 'none'
+                                    }}
                                   />
                                 </button>
                               ))}
                             </div>
                             {localRating > 0 && (
-                              <p className="text-muted-foreground text-sm mt-4">
+                              <p 
+                                className="text-sm mt-4"
+                                style={{ color: theme.muted }}
+                              >
                                 You rated this {localRating} {localRating === 1 ? 'star' : 'stars'}
                               </p>
                             )}
-                          </div>
+                          </motion.div>
                         )}
                       </div>
 
                       {/* Right Column - Sidebar */}
                       <div className="space-y-6">
+                        
                         {/* Details Card */}
-                        <div className="bg-muted/50 rounded-xl p-6 border border-border">
-                          <h3 className="font-bold text-xl mb-5 text-foreground">Details</h3>
+                        <motion.div
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.8, duration: 0.5 }}
+                          className="rounded-2xl p-6 backdrop-blur-xl"
+                          style={{
+                            backgroundColor: `${theme.bg2}aa`,
+                            border: `1px solid ${theme.chipBorder}55`
+                          }}
+                        >
+                          <h3 
+                            className="font-bold text-xl mb-6"
+                            style={{ color: theme.text }}
+                          >
+                            Details
+                          </h3>
                           <div className="space-y-4">
                             <div>
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">Director</p>
-                              <p className="font-semibold text-foreground text-base">{director}</p>
+                              <p 
+                                className="text-xs uppercase tracking-wider mb-2 font-medium"
+                                style={{ color: theme.muted }}
+                              >
+                                Director
+                              </p>
+                              <p 
+                                className="font-semibold text-base"
+                                style={{ color: theme.text }}
+                              >
+                                {director}
+                              </p>
                             </div>
-                            <Separator />
+                            
+                            <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
+                            
                             <div>
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">Release Date</p>
+                              <p 
+                                className="text-xs uppercase tracking-wider mb-2 font-medium"
+                                style={{ color: theme.muted }}
+                              >
+                                Release Date
+                              </p>
                               <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                <p className="font-semibold text-foreground text-sm">
+                                <Calendar 
+                                  className="h-4 w-4 flex-shrink-0" 
+                                  style={{ color: theme.accent }}
+                                />
+                                <p 
+                                  className="font-semibold text-sm"
+                                  style={{ color: theme.text }}
+                                >
                                   {movie.release_date ? new Date(movie.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
                                 </p>
                               </div>
                             </div>
+                            
                             {movie.runtime && (
                               <>
-                                <Separator />
+                                <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                                 <div>
-                                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">Runtime</p>
-                                  <p className="font-semibold text-foreground text-base">{formatRuntime(movie.runtime)}</p>
+                                  <p 
+                                    className="text-xs uppercase tracking-wider mb-2 font-medium"
+                                    style={{ color: theme.muted }}
+                                  >
+                                    Runtime
+                                  </p>
+                                  <p 
+                                    className="font-semibold text-base"
+                                    style={{ color: theme.text }}
+                                  >
+                                    {formatRuntime(movie.runtime)}
+                                  </p>
                                 </div>
                               </>
                             )}
-                            <Separator />
+                            
+                            <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
+                            
                             <div>
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">Language</p>
-                              <p className="font-semibold text-foreground text-base">{getLanguageName(movie.original_language)}</p>
+                              <p 
+                                className="text-xs uppercase tracking-wider mb-2 font-medium"
+                                style={{ color: theme.muted }}
+                              >
+                                Language
+                              </p>
+                              <p 
+                                className="font-semibold text-base"
+                                style={{ color: theme.text }}
+                              >
+                                {getLanguageName(movie.original_language)}
+                              </p>
                             </div>
-                            <Separator />
+                            
+                            <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
+                            
                             <div>
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">Genres</p>
-                              <div className="flex flex-wrap gap-1.5 mt-2">
+                              <p 
+                                className="text-xs uppercase tracking-wider mb-2 font-medium"
+                                style={{ color: theme.muted }}
+                              >
+                                Genres
+                              </p>
+                              <div className="flex flex-wrap gap-2 mt-2">
                                 {genres.map((genre, index) => (
-                                  <Badge key={index} variant="secondary" className="text-xs px-2 py-0.5">
+                                  <span
+                                    key={index}
+                                    className="text-xs px-3 py-1 rounded-full font-medium"
+                                    style={{
+                                      backgroundColor: `${theme.accent}22`,
+                                      color: theme.text,
+                                      border: `1px solid ${theme.accent}44`
+                                    }}
+                                  >
                                     {genre}
-                                  </Badge>
+                                  </span>
                                 ))}
                               </div>
                             </div>
                           </div>
-                        </div>
+                        </motion.div>
 
                         {/* Viewer Stats Card */}
-                        <div className="bg-muted/50 rounded-xl p-6 border border-border">
-                          <h3 className="font-bold text-xl mb-5 text-foreground">Viewer Stats</h3>
+                        <motion.div
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.9, duration: 0.5 }}
+                          className="rounded-2xl p-6 backdrop-blur-xl"
+                          style={{
+                            backgroundColor: `${theme.bg2}aa`,
+                            border: `1px solid ${theme.chipBorder}55`
+                          }}
+                        >
+                          <h3 
+                            className="font-bold text-xl mb-6"
+                            style={{ color: theme.text }}
+                          >
+                            Stats
+                          </h3>
                           <div className="space-y-4">
                             {movie.vote_average && (
                               <>
                                 <div className="flex justify-between items-center gap-3">
-                                  <span className="text-xs uppercase tracking-wide text-muted-foreground">IMDb Rating</span>
+                                  <span 
+                                    className="text-xs uppercase tracking-wider font-medium"
+                                    style={{ color: theme.muted }}
+                                  >
+                                    Rating
+                                  </span>
                                   <div className="flex items-center gap-2 flex-shrink-0">
-                                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                    <span className="font-bold text-foreground text-base">{movie.vote_average.toFixed(1)}/10</span>
+                                    <Star 
+                                      className="h-4 w-4" 
+                                      style={{ color: theme.accent }}
+                                      fill={theme.accent}
+                                    />
+                                    <span 
+                                      className="font-bold text-base"
+                                      style={{ color: theme.text }}
+                                    >
+                                      {movie.vote_average.toFixed(1)}/10
+                                    </span>
                                   </div>
                                 </div>
-                                <Separator />
+                                <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                               </>
                             )}
                             {movie.popularity && (
                               <>
                                 <div className="flex justify-between items-center gap-3">
-                                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Popularity</span>
+                                  <span 
+                                    className="text-xs uppercase tracking-wider font-medium"
+                                    style={{ color: theme.muted }}
+                                  >
+                                    Popularity
+                                  </span>
                                   <div className="flex items-center gap-2 flex-shrink-0">
-                                    <TrendingUp className="h-4 w-4 text-primary" />
-                                    <span className="font-bold text-foreground text-sm whitespace-nowrap">{getTrendingRank(movie.popularity)}</span>
+                                    <TrendingUp 
+                                      className="h-4 w-4" 
+                                      style={{ color: theme.accent }}
+                                    />
+                                    <span 
+                                      className="font-bold text-sm whitespace-nowrap"
+                                      style={{ color: theme.text }}
+                                    >
+                                      {getTrendingRank(movie.popularity)}
+                                    </span>
                                   </div>
                                 </div>
-                                <Separator />
+                                <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                               </>
                             )}
                             <div className="flex justify-between items-center gap-3">
-                              <span className="text-xs uppercase tracking-wide text-muted-foreground">Views</span>
+                              <span 
+                                className="text-xs uppercase tracking-wider font-medium"
+                                style={{ color: theme.muted }}
+                              >
+                                Views
+                              </span>
                               <div className="flex items-center gap-2 flex-shrink-0">
-                                <Eye className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-bold text-foreground text-base whitespace-nowrap">{formatViews(movie.vote_count, movie.popularity)}</span>
+                                <Eye 
+                                  className="h-4 w-4" 
+                                  style={{ color: theme.muted }}
+                                />
+                                <span 
+                                  className="font-bold text-base whitespace-nowrap"
+                                  style={{ color: theme.text }}
+                                >
+                                  {formatViews(movie.vote_count, movie.popularity)}
+                                </span>
                               </div>
                             </div>
                             {(movie.budget && movie.budget > 0) && (
                               <>
-                                <Separator />
+                                <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                                 <div className="flex justify-between items-center gap-3">
-                                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Budget</span>
-                                  <span className="font-bold text-foreground text-base flex-shrink-0">{formatCurrency(movie.budget)}</span>
+                                  <span 
+                                    className="text-xs uppercase tracking-wider font-medium"
+                                    style={{ color: theme.muted }}
+                                  >
+                                    Budget
+                                  </span>
+                                  <span 
+                                    className="font-bold text-base flex-shrink-0"
+                                    style={{ color: theme.text }}
+                                  >
+                                    {formatCurrency(movie.budget)}
+                                  </span>
                                 </div>
                               </>
                             )}
                             {(movie.revenue && movie.revenue > 0) && (
                               <>
-                                <Separator />
+                                <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                                 <div className="flex justify-between items-center gap-3">
-                                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Revenue</span>
-                                  <span className="font-bold text-foreground text-base flex-shrink-0">{formatCurrency(movie.revenue)}</span>
+                                  <span 
+                                    className="text-xs uppercase tracking-wider font-medium"
+                                    style={{ color: theme.muted }}
+                                  >
+                                    Revenue
+                                  </span>
+                                  <span 
+                                    className="font-bold text-base flex-shrink-0"
+                                    style={{ color: theme.text }}
+                                  >
+                                    {formatCurrency(movie.revenue)}
+                                  </span>
                                 </div>
                               </>
                             )}
                           </div>
-                        </div>
+                        </motion.div>
 
                         {/* Keywords */}
                         {keywords.length > 0 && (
-                          <div className="bg-muted/50 rounded-xl p-6 border border-border">
-                            <h3 className="font-bold text-xl mb-4 text-foreground flex items-center gap-2">
-                              <Tag className="w-5 h-5" />
-                              Keywords
-                            </h3>
+                          <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 1.0, duration: 0.5 }}
+                            className="rounded-2xl p-6 backdrop-blur-xl"
+                            style={{
+                              backgroundColor: `${theme.bg2}aa`,
+                              border: `1px solid ${theme.chipBorder}55`
+                            }}
+                          >
+                            <div className="flex items-center gap-2 mb-5">
+                              <Tag 
+                                className="w-5 h-5" 
+                                style={{ color: theme.accent }}
+                              />
+                              <h3 
+                                className="font-bold text-xl"
+                                style={{ color: theme.text }}
+                              >
+                                Keywords
+                              </h3>
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               {keywords.slice(0, 12).map((keyword, index) => (
-                                <Badge
+                                <span
                                   key={index}
-                                  variant="secondary"
-                                  className="px-3 py-1 text-xs"
+                                  className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all hover:scale-105 cursor-default"
+                                  style={{
+                                    backgroundColor: `${theme.bg}cc`,
+                                    color: theme.text,
+                                    border: `1px solid ${theme.chipBorder}77`
+                                  }}
                                 >
                                   {keyword}
-                                </Badge>
+                                </span>
                               ))}
                             </div>
-                          </div>
+                          </motion.div>
                         )}
                       </div>
                     </div>
