@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
+import PopmeltBadge from './components/PopmeltBadge';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -12,7 +13,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gray-950">
+        <div className="min-h-screen bg-background">
           <Navbar />
           <Routes>
             <Route path="/" element={<Home />} />
@@ -22,6 +23,7 @@ function App() {
             <Route path="/watchlist" element={<Watchlist />} />
             <Route path="/recommendations" element={<Recommendations />} />
           </Routes>
+          <PopmeltBadge />
         </div>
       </Router>
     </AuthProvider>

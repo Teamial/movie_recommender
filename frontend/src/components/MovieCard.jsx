@@ -77,7 +77,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
   return (
     <>
       <div 
-        className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transition-transform hover:scale-105 cursor-pointer"
+        className="bg-card rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer border border-border/50"
         onClick={() => setShowModal(true)}
       >
         <div className="relative aspect-[2/3]">
@@ -88,8 +88,8 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full bg-gray-700 flex items-center justify-center">
-              <span className="text-gray-500">No Image</span>
+            <div className="w-full h-full bg-muted flex items-center justify-center">
+              <span className="text-muted-foreground">No Image</span>
             </div>
           )}
           
@@ -98,21 +98,21 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
             <div className="absolute top-2 right-2 flex gap-2">
               <button
                 onClick={handleFavorite}
-                className="p-2 bg-black bg-opacity-60 hover:bg-opacity-80 rounded-full transition"
+                className="p-2 bg-background/90 hover:bg-background backdrop-blur-sm rounded-full transition-all shadow-sm"
               >
                 <Heart
-                  className={`w-5 h-5 ${
-                    localFavorite ? 'text-red-500 fill-red-500' : 'text-white'
+                  className={`w-5 h-5 transition-colors ${
+                    localFavorite ? 'text-red-500 fill-red-500' : 'text-foreground/70'
                   }`}
                 />
               </button>
               <button
                 onClick={handleWatchlist}
-                className="p-2 bg-black bg-opacity-60 hover:bg-opacity-80 rounded-full transition"
+                className="p-2 bg-background/90 hover:bg-background backdrop-blur-sm rounded-full transition-all shadow-sm"
               >
                 <Bookmark
-                  className={`w-5 h-5 ${
-                    localWatchlist ? 'text-blue-500 fill-blue-500' : 'text-white'
+                  className={`w-5 h-5 transition-colors ${
+                    localWatchlist ? 'text-primary fill-primary' : 'text-foreground/70'
                   }`}
                 />
               </button>
@@ -121,22 +121,22 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
 
           {/* Rating Badge */}
           {movie.vote_average && (
-            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black bg-opacity-80 rounded-md flex items-center gap-1">
+            <div className="absolute bottom-2 left-2 px-2 py-1 bg-background/90 backdrop-blur-sm rounded-lg flex items-center gap-1 shadow-sm">
               <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-              <span className="text-white text-sm font-semibold">
+              <span className="text-foreground text-sm font-semibold">
                 {movie.vote_average.toFixed(1)}
               </span>
             </div>
           )}
         </div>
 
-        <div className="p-4">
-          <h3 className="text-white font-semibold text-lg mb-2 line-clamp-2">
+        <div className="p-4 bg-card">
+          <h3 className="text-foreground font-semibold text-lg mb-2 line-clamp-2">
             {movie.title}
           </h3>
           
           {movie.release_date && (
-            <p className="text-gray-400 text-sm mb-3">
+            <p className="text-muted-foreground text-sm mb-3">
               {new Date(movie.release_date).getFullYear()}
             </p>
           )}
@@ -156,7 +156,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
                     className={`w-4 h-4 ${
                       star <= (hoverRating || localRating)
                         ? 'text-yellow-500 fill-yellow-500'
-                        : 'text-gray-600'
+                        : 'text-muted-foreground/30'
                     }`}
                   />
                 </button>
