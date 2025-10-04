@@ -18,7 +18,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
 from backend.database import SessionLocal
 from backend.ml.recommender import MovieRecommender
-from backend.models import User, Rating
+from backend.models import User, Rating, Movie
 import json
 
 
@@ -189,7 +189,7 @@ def demo_sequential_patterns(recommender, user_id):
     
     db = SessionLocal()
     for i, pattern in enumerate(context['sequential_patterns'], 1):
-        movie = db.query(MovieRecommender).filter_by(id=pattern['movie_id']).first()
+        movie = db.query(Movie).filter(Movie.id == pattern['movie_id']).first()
         if movie:
             stars = "⭐" * int(pattern['rating'])
             print(f"   {i}. {movie.title}")
