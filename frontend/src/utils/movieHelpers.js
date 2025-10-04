@@ -41,6 +41,41 @@ const LANGUAGE_NAMES = {
   'et': 'Estonian',
   'lv': 'Latvian',
   'lt': 'Lithuanian',
+  'cn': 'Cantonese',
+  'ta': 'Tamil',
+  'te': 'Telugu',
+  'ml': 'Malayalam',
+  'kn': 'Kannada',
+  'mr': 'Marathi',
+  'bn': 'Bengali',
+  'pa': 'Punjabi',
+  'fa': 'Persian',
+  'sw': 'Swahili',
+  'af': 'Afrikaans',
+  'is': 'Icelandic',
+  'ga': 'Irish',
+  'cy': 'Welsh',
+  'ca': 'Catalan',
+  'eu': 'Basque',
+  'gl': 'Galician',
+  'sq': 'Albanian',
+  'mk': 'Macedonian',
+  'bs': 'Bosnian',
+  'be': 'Belarusian',
+  'ka': 'Georgian',
+  'hy': 'Armenian',
+  'az': 'Azerbaijani',
+  'uz': 'Uzbek',
+  'kk': 'Kazakh',
+  'mn': 'Mongolian',
+  'ne': 'Nepali',
+  'si': 'Sinhala',
+  'my': 'Burmese',
+  'km': 'Khmer',
+  'lo': 'Lao',
+  'am': 'Amharic',
+  'ur': 'Urdu',
+  'ps': 'Pashto',
 };
 
 /**
@@ -88,40 +123,46 @@ export const getDirector = (crew) => {
  * @returns {string} - Formatted view count
  */
 export const formatViews = (voteCount, popularity) => {
-  if (voteCount && voteCount > 0) {
-    return voteCount.toLocaleString();
-  }
+  // Prioritize popularity for a better "views" metric
+  // vote_count is just the number of ratings, which is usually low
   if (popularity && popularity > 0) {
-    // Convert popularity to view-like number
-    const views = Math.round(popularity * 10000);
+    // Convert popularity to view-like number (more realistic scale)
+    const views = Math.round(popularity * 100000);
     if (views >= 1000000) {
       return `${(views / 1000000).toFixed(1)}M`;
     }
     if (views >= 1000) {
-      return `${(views / 1000).toFixed(1)}K`;
+      return `${(views / 1000).toFixed(0)}K`;
     }
-    return views.toString();
+    return views.toLocaleString();
+  }
+  if (voteCount && voteCount > 0) {
+    // Fallback to vote count if no popularity
+    return voteCount.toLocaleString();
   }
   return 'N/A';
 };
 
 /**
- * Calculate trending rank (mock implementation)
- * In production, this would come from your backend
+ * Calculate trending rank based on popularity
  * @param {number|null|undefined} popularity - Popularity score
- * @returns {string} - Trending rank
+ * @returns {string} - Trending rank or popularity score
  */
 export const getTrendingRank = (popularity) => {
   if (!popularity) return 'N/A';
   
-  // Mock calculation based on popularity
-  // Higher popularity = lower rank number (better)
-  if (popularity >= 100) return '#1 Trending';
-  if (popularity >= 80) return `#${Math.floor(120 - popularity)} Trending`;
-  if (popularity >= 50) return `#${Math.floor(150 - popularity)} Trending`;
-  if (popularity >= 20) return `#${Math.floor(200 - popularity)} Trending`;
+  // More realistic trending calculation
+  // TMDB popularity typically ranges from 0-500+ for movies
+  if (popularity >= 500) return '#1 Trending';
+  if (popularity >= 400) return 'Top 5';
+  if (popularity >= 300) return 'Top 10';
+  if (popularity >= 200) return 'Top 25';
+  if (popularity >= 150) return 'Top 50';
+  if (popularity >= 100) return 'Top 100';
+  if (popularity >= 50) return 'Popular';
   
-  return 'Not Trending';
+  // For lower popularity, just show the score
+  return `${popularity.toFixed(0)} points`;
 };
 
 /**
