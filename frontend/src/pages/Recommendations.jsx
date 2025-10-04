@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles, RefreshCw, TrendingUp, Info } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, RefreshCw, TrendingUp, Info, Filter, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import MovieCard from '../components/MovieCard';
 import { useAuth } from '../context/AuthContext';
-import { getFavorites, getWatchlist, getUserRatings } from '../services/api';
+import { getFavorites, getWatchlist, getUserRatings, getGenres } from '../services/api';
 import { Button } from '@/components/ui/button';
 import api from '../services/api';
 
@@ -15,12 +15,16 @@ const Recommendations = () => {
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [watchlistIds, setWatchlistIds] = useState(new Set());
   const [userRatings, setUserRatings] = useState({});
+  const [genres, setGenres] = useState([]);
+  const [selectedGenres, setSelectedGenres] = useState([]);
+  const [showFilters, setShowFilters] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
     if (user) {
       fetchRecommendations();
       fetchUserData();
+      fetchGenres();
     }
   }, [user]);
 
@@ -60,6 +64,39 @@ const Recommendations = () => {
       console.error('Error fetching user data:', error);
     }
   };
+
+  const fetchGenres = async () => {
+    try {
+      const response = await getGenres();
+      setGenres(response.data);
+    } catch (error) {
+      console.error('Error fetching genres:', error);
+    }
+  };
+
+  const toggleGenre = (genreName) => {
+    setSelectedGenres(prev => 
+      prev.includes(genreName)
+        ? prev.filter(g => g !== genreName)
+        : [...prev, genreName]
+    );
+  };
+
+  const clearFilters = () => {
+    setSelectedGenres([]);
+  };
+
+  // Filter movies by selected genres
+  const filteredRecommendations = selectedGenres.length === 0
+    ? recommendations
+    : recommendations.filter(movie => {
+        const movieGenres = Array.isArray(movie.genres) 
+          ? movie.genres 
+          : (typeof movie.genres === 'string' ? JSON.parse(movie.genres) : []);
+        return selectedGenres.some(selectedGenre => 
+          movieGenres.includes(selectedGenre)
+        );
+      });
 
   const handleUpdate = async () => {
     await fetchUserData();
@@ -120,6 +157,16 @@ const Recommendations = () => {
                 </Link>
               </Button>
               <Button
+                onClick={() => setShowFilters(!showFilters)}
+                variant="outline"
+                className={`rounded-xl ${selectedGenres.length > 0 ? 'bg-primary/10 border-primary' : ''}`}
+              >
+                <Filter className="w-4 h-4" />
+                {selectedGenres.length > 0 && (
+                  <span className="ml-1 text-xs font-semibold">({selectedGenres.length})</span>
+                )}
+              </Button>
+              <Button
                 onClick={fetchRecommendations}
                 disabled={loading}
                 variant="outline"
@@ -136,9 +183,11 @@ const Recommendations = () => {
             <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
               <div className="flex items-center gap-3 mb-2">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                <span className="text-xs uppercase text-muted-foreground font-medium">Recommendations</span>
+                <span className="text-xs uppercase text-muted-foreground font-medium">
+                  {selectedGenres.length > 0 ? 'Filtered' : 'Recommendations'}
+                </span>
               </div>
-              <p className="text-3xl font-bold text-foreground">{recommendations.length}</p>
+              <p className="text-3xl font-bold text-foreground">{filteredRecommendations.length}</p>
             </div>
             <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
               <div className="flex items-center gap-3 mb-2">
@@ -148,6 +197,66 @@ const Recommendations = () => {
               <p className="text-3xl font-bold text-foreground">{favoriteIds.size + Object.keys(userRatings).length}</p>
             </div>
           </div>
+
+          {/* Genre Filter Panel */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden mt-6"
+              >
+                <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-foreground font-semibold">Filter by Genre</h3>
+                    {selectedGenres.length > 0 && (
+                      <Button
+                        onClick={clearFilters}
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {genres.map((genre) => (
+                      <Button
+                        key={genre.id}
+                        onClick={() => toggleGenre(genre.name)}
+                        variant={selectedGenres.includes(genre.name) ? "default" : "outline"}
+                        size="sm"
+                        className={`rounded-full transition-all ${
+                          selectedGenres.includes(genre.name)
+                            ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-md scale-105'
+                            : 'hover:bg-primary/10'
+                        }`}
+                      >
+                        {genre.name}
+                      </Button>
+                    ))}
+                  </div>
+                  {selectedGenres.length > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 pt-4 border-t border-border"
+                    >
+                      <p className="text-sm text-muted-foreground">
+                        Showing {filteredRecommendations.length} movies in: {' '}
+                        <span className="font-semibold text-foreground">
+                          {selectedGenres.join(', ')}
+                        </span>
+                      </p>
+                    </motion.div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Content */}
@@ -188,6 +297,23 @@ const Recommendations = () => {
               <Link to="/">Explore Movies</Link>
             </Button>
           </motion.div>
+        ) : filteredRecommendations.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-card rounded-2xl p-12 text-center border border-border shadow-sm"
+          >
+            <Filter className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              No movies match your filters
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              Try selecting different genres or clearing your filters.
+            </p>
+            <Button onClick={clearFilters} className="rounded-xl">
+              Clear Filters
+            </Button>
+          </motion.div>
         ) : (
           <motion.div
             initial={{ opacity: 0 }}
@@ -195,22 +321,26 @@ const Recommendations = () => {
             transition={{ delay: 0.2 }}
             className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6"
           >
-            {recommendations.map((movie, index) => (
-              <motion.div
-                key={movie.id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <MovieCard
-                  movie={movie}
-                  isFavorite={favoriteIds.has(movie.id)}
-                  isInWatchlist={watchlistIds.has(movie.id)}
-                  userRating={userRatings[movie.id]}
-                  onUpdate={handleUpdate}
-                />
-              </motion.div>
-            ))}
+            <AnimatePresence mode="popLayout">
+              {filteredRecommendations.map((movie, index) => (
+                <motion.div
+                  key={movie.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ delay: index * 0.02 }}
+                  layout
+                >
+                  <MovieCard
+                    movie={movie}
+                    isFavorite={favoriteIds.has(movie.id)}
+                    isInWatchlist={watchlistIds.has(movie.id)}
+                    userRating={userRatings[movie.id]}
+                    onUpdate={handleUpdate}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </motion.div>
         )}
       </div>
