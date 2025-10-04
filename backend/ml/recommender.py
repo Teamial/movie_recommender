@@ -39,6 +39,61 @@ class MovieRecommender:
         excluded_ids.update([r[0] for r in low_ratings])
         
         return excluded_ids
+    
+    def _filter_disliked_genres(self, movies: list, user_id: int) -> list:
+        """
+        Filter out movies from genres the user explicitly disliked in onboarding
+        
+        Args:
+            movies: List of Movie objects
+            user_id: User ID
+            
+        Returns:
+            Filtered list of movies without disliked genres
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        
+        if not user or not user.genre_preferences:
+            return movies  # No preferences to filter by
+        
+        try:
+            # Get disliked genres (score < 0)
+            genre_prefs = user.genre_preferences if isinstance(user.genre_preferences, dict) else json.loads(user.genre_preferences)
+            disliked_genres = {genre for genre, score in genre_prefs.items() if score < 0}
+            
+            if not disliked_genres:
+                return movies  # No disliked genres
+            
+            # Filter out movies that contain ANY disliked genre
+            filtered_movies = []
+            for movie in movies:
+                if movie.genres:
+                    try:
+                        genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                        movie_genre_set = set(genres)
+                        
+                        # Only include if movie has NO disliked genres
+                        if not movie_genre_set.intersection(disliked_genres):
+                            filtered_movies.append(movie)
+                    except:
+                        # If genre parsing fails, include the movie (benefit of doubt)
+                        filtered_movies.append(movie)
+                else:
+                    # If no genres listed, include the movie
+                    filtered_movies.append(movie)
+            
+            if filtered_movies:
+                logger.info(f"Filtered {len(movies) - len(filtered_movies)} movies with disliked genres: {disliked_genres}")
+                return filtered_movies
+            else:
+                # If filtering removes ALL movies, return original list
+                # (better to show some movies than none)
+                logger.warning(f"Genre filtering would remove all movies, returning unfiltered list")
+                return movies
+                
+        except Exception as e:
+            logger.error(f"Error filtering disliked genres: {e}")
+            return movies  # Return unfiltered on error
         
     def get_user_based_recommendations(self, user_id: int, n_recommendations: int = 10):
         """Collaborative filtering with implicit feedback"""
@@ -818,6 +873,9 @@ class MovieRecommender:
                 recommendations = self._apply_temporal_filtering(recommendations, context)
                 logger.info(f"Applied temporal filtering to cold start recommendations")
             
+            # Filter out disliked genres from onboarding
+            recommendations = self._filter_disliked_genres(recommendations, user_id)
+            
             return recommendations
         
         else:
@@ -892,6 +950,9 @@ class MovieRecommender:
                     context
                 )
                 logger.info(f"Applied diversity boost (recent genres: {len(context['recent_genres'])})")
+            
+            # Filter out disliked genres from onboarding (applies to ALL users)
+            hybrid_recommendations = self._filter_disliked_genres(hybrid_recommendations, user_id)
             
             return hybrid_recommendations[:n_recommendations]
     
