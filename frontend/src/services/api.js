@@ -49,4 +49,7 @@ export const deleteReview = (reviewId) => api.delete(`/user/reviews/${reviewId}`
 export const createRating = (data, userId) => api.post(`/ratings/?user_id=${userId}`, data);
 export const getUserRatings = (userId) => api.get(`/ratings/user/${userId}`);
 
+// Recommendations
+export const getRecommendations = (userId) => api.get(`/movies/recommendations?user_id=${userId}`);
+
 export default api;

@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, String
 from typing import Optional, List
 from backend.database import get_db
-from backend.models import Movie as MovieModel, Genre as GenreModel
+from backend.models import Movie as MovieModel, Genre as GenreModel, User
 from backend.schemas import Movie, MovieList, Genre
+from backend.ml.recommender import MovieRecommender
+from backend.auth import get_current_user
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -59,23 +61,23 @@ def get_movies(
         "movies": movies
     }
 
-@router.get("/{movie_id}", response_model=Movie)
-def get_movie(movie_id: int, db: Session = Depends(get_db)):
-    """Get a specific movie by ID"""
+@router.get("/recommendations", response_model=List[Movie])
+def get_recommendations(
+    user_id: int = Query(...),
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get personalized movie recommendations for a user"""
     
-    movie = db.query(MovieModel).filter(MovieModel.id == movie_id).first()
+    # Verify the user is requesting their own recommendations
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to view these recommendations")
     
-    if not movie:
-        raise HTTPException(status_code=404, detail="Movie not found")
+    recommender = MovieRecommender(db)
+    recommendations = recommender.get_hybrid_recommendations(user_id, limit)
     
-    return movie
-
-@router.get("/genres/list", response_model=List[Genre])
-def get_genres(db: Session = Depends(get_db)):
-    """Get all available genres"""
-    
-    genres = db.query(GenreModel).all()
-    return genres
+    return recommendations
 
 @router.get("/top-rated", response_model=List[Movie])
 def get_top_rated(
@@ -91,3 +93,21 @@ def get_top_rated(
         .all()
     
     return movies
+
+@router.get("/genres/list", response_model=List[Genre])
+def get_genres(db: Session = Depends(get_db)):
+    """Get all available genres"""
+    
+    genres = db.query(GenreModel).all()
+    return genres
+
+@router.get("/{movie_id}", response_model=Movie)
+def get_movie(movie_id: int, db: Session = Depends(get_db)):
+    """Get a specific movie by ID"""
+    
+    movie = db.query(MovieModel).filter(MovieModel.id == movie_id).first()
+    
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    
+    return movie
