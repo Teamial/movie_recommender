@@ -1,17 +1,10 @@
 {
-    "editor.acceptSuggestionOnEnter": "smart",
-    "editor.inlineSuggest.edits.renderSideBySide": "auto",
-    "editor.inlineSuggest.enabled": true,
-    "terminal.integrated.suggest.quickSuggestions": {
-        
-        "commands": "on",
-        "arguments": "on",
-        "unknown": "off"
-    },
-    "workbench.editor.enablePreview": false,
-    "cursor.terminal.enableAiChecks": true,
-    "css.validate": false,
-  "tailwindCSS.experimental.classRegex": [
-    ["className\\s*[:=]\\s*['\"]([^'\"]*)", "([^'\"]*)"]
-  ]
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}"
+  ],
+  "python.languageServer": "None",
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.typeCheckingMode": "basic"
 }

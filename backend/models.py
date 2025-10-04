@@ -16,7 +16,20 @@ class Movie(Base):
     poster_url = Column(String(500))
     backdrop_url = Column(String(500))
     genres = Column(JSON)
+    
+    # Enriched data fields
+    cast = Column(JSON)  # Top cast members with character names
+    crew = Column(JSON)  # Key crew members (director, producers, etc.)
+    keywords = Column(JSON)  # Movie keywords/tags
+    runtime = Column(Integer)  # Runtime in minutes
+    budget = Column(Integer)  # Budget in dollars
+    revenue = Column(Integer)  # Revenue in dollars
+    tagline = Column(String(500))  # Movie tagline
+    similar_movie_ids = Column(JSON)  # IDs of similar movies
+    trailer_key = Column(String(100))  # YouTube trailer key
+    
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     ratings = relationship("Rating", back_populates="movie")
@@ -98,3 +111,17 @@ class Genre(Base):
     
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    run_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    movies_processed = Column(Integer)
+    status = Column(String(50))  # SUCCESS, FAILED, RUNNING
+    source_categories = Column(JSON)  # List of categories processed
+    duration_seconds = Column(Float)
+    error_message = Column(Text)
+    
+    def __repr__(self):
+        return f"<PipelineRun(id={self.id}, status={self.status}, date={self.run_date})>"

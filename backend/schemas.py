@@ -16,7 +16,18 @@ class MovieBase(BaseModel):
 
 class Movie(MovieBase):
     id: int
+    # Enriched fields
+    cast: Optional[List] = None
+    crew: Optional[List] = None
+    keywords: Optional[List[str]] = None
+    runtime: Optional[int] = None
+    budget: Optional[int] = None
+    revenue: Optional[int] = None
+    tagline: Optional[str] = None
+    similar_movie_ids: Optional[List[int]] = None
+    trailer_key: Optional[str] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
