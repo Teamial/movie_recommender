@@ -8,6 +8,7 @@ from collections import defaultdict
 class MovieRecommender:
     def __init__(self, db: Session):
         self.db = db
+        self.cold_start_threshold = 3  # Users with < 3 interactions are "cold start"
     
     def _get_excluded_movie_ids(self, user_id: int):
         """Get set of movie IDs to exclude from recommendations"""
@@ -207,26 +208,266 @@ class MovieRecommender:
         
         return query.order_by(Movie.vote_average.desc()).limit(n).all()
     
+    def _is_cold_start_user(self, user_id: int) -> bool:
+        """Check if user has insufficient data (cold start problem)"""
+        # Count total interactions
+        ratings_count = self.db.query(Rating).filter(Rating.user_id == user_id).count()
+        favorites_count = self.db.query(Favorite).filter(Favorite.user_id == user_id).count()
+        watchlist_count = self.db.query(WatchlistItem).filter(WatchlistItem.user_id == user_id).count()
+        
+        total_interactions = ratings_count + favorites_count + watchlist_count
+        return total_interactions < self.cold_start_threshold
+    
+    def get_item_based_recommendations(self, user_id: int, n_recommendations: int = 10):
+        """
+        Item-based collaborative filtering - better for sparse data
+        Recommends movies similar to ones the user has liked
+        """
+        # Get user's liked movies (ratings >= 4.0)
+        user_ratings = self.db.query(Rating).filter(
+            Rating.user_id == user_id,
+            Rating.rating >= 4.0
+        ).all()
+        
+        if not user_ratings:
+            # Fall back to favorites
+            user_favorites = self.db.query(Favorite).filter(Favorite.user_id == user_id).all()
+            if not user_favorites:
+                return self._get_popular_movies(n_recommendations, user_id)
+            liked_movie_ids = [f.movie_id for f in user_favorites]
+        else:
+            liked_movie_ids = [r.movie_id for r in user_ratings]
+        
+        # Get all ratings in the system
+        all_ratings = self.db.query(Rating).all()
+        
+        if len(all_ratings) < 10:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        # Create item-user matrix
+        item_ratings = defaultdict(dict)
+        for rating in all_ratings:
+            item_ratings[rating.movie_id][rating.user_id] = rating.rating
+        
+        # Convert to DataFrame for similarity calculation
+        df = pd.DataFrame(item_ratings).T.fillna(0)
+        
+        if df.empty or len(df) < 2:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        # Calculate item similarity
+        item_similarity = cosine_similarity(df)
+        item_similarity_df = pd.DataFrame(
+            item_similarity,
+            index=df.index,
+            columns=df.index
+        )
+        
+        # Find similar items to user's liked movies
+        movie_scores = defaultdict(float)
+        excluded_ids = self._get_excluded_movie_ids(user_id)
+        seen_movie_ids = set(liked_movie_ids)
+        
+        for movie_id in liked_movie_ids:
+            if movie_id not in item_similarity_df.index:
+                continue
+            
+            # Get similar movies
+            similar_movies = item_similarity_df[movie_id].sort_values(ascending=False)[1:21]
+            
+            for similar_movie_id, similarity in similar_movies.items():
+                if similar_movie_id not in seen_movie_ids and similar_movie_id not in excluded_ids:
+                    movie_scores[similar_movie_id] += similarity
+        
+        # Sort by score
+        top_movie_ids = sorted(
+            movie_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:n_recommendations]
+        
+        # Fetch movies
+        movie_ids = [int(movie_id) for movie_id, _ in top_movie_ids]
+        movies = self.db.query(Movie).filter(Movie.id.in_(movie_ids)).all()
+        
+        movie_dict = {m.id: m for m in movies}
+        recommended_movies = [movie_dict[mid] for mid, _ in top_movie_ids if mid in movie_dict]
+        
+        return recommended_movies
+    
+    def get_demographic_recommendations(self, user_id: int, n_recommendations: int = 10):
+        """
+        Demographic-based recommendations for cold start users
+        Uses age and location to find similar users' preferences
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        # Find similar users by demographics
+        similar_users_query = self.db.query(User).filter(User.id != user_id)
+        
+        # Filter by age range (±5 years)
+        if user.age:
+            similar_users_query = similar_users_query.filter(
+                User.age.between(user.age - 5, user.age + 5)
+            )
+        
+        # Filter by location
+        if user.location:
+            similar_users_query = similar_users_query.filter(User.location == user.location)
+        
+        similar_users = similar_users_query.limit(20).all()
+        
+        if not similar_users:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        # Get highly-rated movies from similar users
+        similar_user_ids = [u.id for u in similar_users]
+        top_rated = self.db.query(Rating).filter(
+            Rating.user_id.in_(similar_user_ids),
+            Rating.rating >= 4.0
+        ).all()
+        
+        # Score movies by frequency and average rating
+        movie_scores = defaultdict(lambda: {'count': 0, 'total_rating': 0})
+        for rating in top_rated:
+            movie_scores[rating.movie_id]['count'] += 1
+            movie_scores[rating.movie_id]['total_rating'] += rating.rating
+        
+        # Calculate weighted scores
+        scored_movies = []
+        excluded_ids = self._get_excluded_movie_ids(user_id)
+        
+        for movie_id, scores in movie_scores.items():
+            if movie_id not in excluded_ids:
+                avg_rating = scores['total_rating'] / scores['count']
+                # Weight by both frequency and average rating
+                score = scores['count'] * avg_rating
+                scored_movies.append((movie_id, score))
+        
+        # Sort by score
+        scored_movies.sort(key=lambda x: x[1], reverse=True)
+        top_movie_ids = [movie_id for movie_id, _ in scored_movies[:n_recommendations]]
+        
+        # Fetch movies
+        movies = self.db.query(Movie).filter(Movie.id.in_(top_movie_ids)).all()
+        
+        if not movies:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        # Sort movies by the score order
+        movie_dict = {m.id: m for m in movies}
+        return [movie_dict[mid] for mid in top_movie_ids if mid in movie_dict]
+    
+    def get_genre_based_recommendations(self, user_id: int, n_recommendations: int = 10):
+        """
+        Genre-based recommendations using user's genre preferences
+        Good for users who completed onboarding quiz
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        
+        if not user or not user.genre_preferences:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        # Get preferred genres (positive scores)
+        try:
+            import json
+            genre_prefs = user.genre_preferences if isinstance(user.genre_preferences, dict) else json.loads(user.genre_preferences)
+            preferred_genres = [genre for genre, score in genre_prefs.items() if score > 0]
+        except:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        if not preferred_genres:
+            return self._get_popular_movies(n_recommendations, user_id)
+        
+        # Get movies from preferred genres
+        excluded_ids = self._get_excluded_movie_ids(user_id)
+        all_movies = self.db.query(Movie).filter(Movie.vote_count >= 50).all()
+        
+        scored_movies = []
+        for movie in all_movies:
+            if movie.id in excluded_ids:
+                continue
+            
+            try:
+                import json
+                genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres) if movie.genres else []
+                
+                # Calculate genre overlap score
+                overlap = len(set(genres) & set(preferred_genres))
+                if overlap > 0:
+                    # Score based on genre match, popularity, and rating
+                    score = overlap * 3 + (movie.vote_average or 0) + (movie.popularity or 0) / 100
+                    scored_movies.append((movie, score))
+            except:
+                continue
+        
+        # Sort by score
+        scored_movies.sort(key=lambda x: x[1], reverse=True)
+        return [movie for movie, _ in scored_movies[:n_recommendations]]
+    
     def get_hybrid_recommendations(self, user_id: int, n_recommendations: int = 10):
-        """Combine collaborative and content-based filtering"""
+        """
+        Intelligent hybrid recommendations with cold start handling
+        Automatically selects best strategy based on user data
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
         
-        collab_movies = self.get_user_based_recommendations(user_id, n_recommendations)
-        content_movies = self.get_content_based_recommendations(user_id, n_recommendations)
+        # Check if cold start user
+        is_cold_start = self._is_cold_start_user(user_id)
         
-        seen_ids = set()
-        hybrid_recommendations = []
-        
-        # Alternate and deduplicate
-        for i in range(max(len(collab_movies), len(content_movies))):
-            if i < len(collab_movies) and collab_movies[i].id not in seen_ids:
-                hybrid_recommendations.append(collab_movies[i])
-                seen_ids.add(collab_movies[i].id)
+        if is_cold_start:
+            # Cold start strategy
+            recommendations = []
+            seen_ids = set()
             
-            if i < len(content_movies) and content_movies[i].id not in seen_ids:
-                hybrid_recommendations.append(content_movies[i])
-                seen_ids.add(content_movies[i].id)
+            # 1. Genre-based (if preferences available)
+            if user and user.genre_preferences:
+                genre_recs = self.get_genre_based_recommendations(user_id, n_recommendations)
+                for movie in genre_recs:
+                    if movie.id not in seen_ids and len(recommendations) < n_recommendations:
+                        recommendations.append(movie)
+                        seen_ids.add(movie.id)
             
-            if len(hybrid_recommendations) >= n_recommendations:
-                break
+            # 2. Demographic-based (if demographics available)
+            if len(recommendations) < n_recommendations and user and (user.age or user.location):
+                demo_recs = self.get_demographic_recommendations(user_id, n_recommendations - len(recommendations))
+                for movie in demo_recs:
+                    if movie.id not in seen_ids and len(recommendations) < n_recommendations:
+                        recommendations.append(movie)
+                        seen_ids.add(movie.id)
+            
+            # 3. Fill with popular movies
+            if len(recommendations) < n_recommendations:
+                popular_recs = self._get_popular_movies(n_recommendations - len(recommendations), user_id)
+                for movie in popular_recs:
+                    if movie.id not in seen_ids and len(recommendations) < n_recommendations:
+                        recommendations.append(movie)
+                        seen_ids.add(movie.id)
+            
+            return recommendations
         
-        return hybrid_recommendations[:n_recommendations]
+        else:
+            # Standard hybrid approach for users with sufficient data
+            # Use item-based CF (better for sparse data) + content-based
+            item_movies = self.get_item_based_recommendations(user_id, n_recommendations)
+            content_movies = self.get_content_based_recommendations(user_id, n_recommendations)
+            
+            seen_ids = set()
+            hybrid_recommendations = []
+            
+            # Alternate between strategies
+            for i in range(max(len(item_movies), len(content_movies))):
+                if i < len(item_movies) and item_movies[i].id not in seen_ids:
+                    hybrid_recommendations.append(item_movies[i])
+                    seen_ids.add(item_movies[i].id)
+                
+                if i < len(content_movies) and content_movies[i].id not in seen_ids:
+                    hybrid_recommendations.append(content_movies[i])
+                    seen_ids.add(content_movies[i].id)
+                
+                if len(hybrid_recommendations) >= n_recommendations:
+                    break
+            
+            return hybrid_recommendations[:n_recommendations]

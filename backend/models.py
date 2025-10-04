@@ -48,6 +48,12 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # Cold start / onboarding fields
+    age = Column(Integer, nullable=True)  # User age for demographic recommendations
+    location = Column(String(100), nullable=True)  # User location/country
+    genre_preferences = Column(JSON, nullable=True)  # Liked/disliked genres: {"Action": 1, "Horror": -1}
+    onboarding_completed = Column(Boolean, default=False)  # Whether user completed onboarding
+    
     # Relationships
     ratings = relationship("Rating", back_populates="user")
     favorites = relationship("Favorite", back_populates="user")

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import engine, Base
-from backend.routes import movies, ratings, auth, user_features, pipeline
+from backend.routes import movies, ratings, auth, user_features, pipeline, onboarding
 import logging
 
 # Configure logging
@@ -33,6 +33,7 @@ app.include_router(movies.router)
 app.include_router(ratings.router)
 app.include_router(user_features.router)
 app.include_router(pipeline.router)
+app.include_router(onboarding.router)
 
 # Initialize scheduler on startup
 @app.on_event("startup")

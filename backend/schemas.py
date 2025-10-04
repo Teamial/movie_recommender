@@ -55,6 +55,10 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     created_at: datetime
+    age: Optional[int] = None
+    location: Optional[str] = None
+    genre_preferences: Optional[dict] = None
+    onboarding_completed: bool = False
     
     class Config:
         from_attributes = True
@@ -62,6 +66,22 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+# Onboarding Schemas
+class OnboardingMovieRating(BaseModel):
+    movie_id: int
+    rating: float = Field(..., ge=0.5, le=5.0)
+
+class OnboardingData(BaseModel):
+    age: Optional[int] = Field(None, ge=13, le=120)
+    location: Optional[str] = Field(None, max_length=100)
+    genre_preferences: Optional[dict] = None  # {"Action": 1, "Horror": -1, "Comedy": 1}
+    movie_ratings: List[OnboardingMovieRating] = []  # Initial movie ratings
+
+class OnboardingResponse(BaseModel):
+    message: str
+    onboarding_completed: bool
+    recommendations_ready: bool
 
 # Rating Schemas
 class RatingCreate(BaseModel):
