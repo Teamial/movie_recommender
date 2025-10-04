@@ -18,7 +18,7 @@ class Movie(Base):
     genres = Column(JSON)
     
     # Enriched data fields
-    cast = Column(JSON)  # Top cast members with character names
+    cast = Column(JSON)  # Top cast members with character names and profile images
     crew = Column(JSON)  # Key crew members (director, producers, etc.)
     keywords = Column(JSON)  # Movie keywords/tags
     runtime = Column(Integer)  # Runtime in minutes
@@ -27,6 +27,7 @@ class Movie(Base):
     tagline = Column(String(500))  # Movie tagline
     similar_movie_ids = Column(JSON)  # IDs of similar movies
     trailer_key = Column(String(100))  # YouTube trailer key
+    original_language = Column(String(10))  # Original language code (e.g., 'en', 'fr')
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

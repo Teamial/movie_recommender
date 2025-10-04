@@ -26,6 +26,7 @@ class Movie(MovieBase):
     tagline: Optional[str] = None
     similar_movie_ids: Optional[List[int]] = None
     trailer_key: Optional[str] = None
+    original_language: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     

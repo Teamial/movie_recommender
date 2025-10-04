@@ -40,9 +40,9 @@ def migrate_database():
             print("📊 Analyzing existing schema...")
             print(f"   Found {len(existing_columns)} existing columns\n")
             
-            # New columns to add
+            # New columns to add (use quotes for reserved keywords like 'cast')
             new_columns = {
-                'cast': 'JSONB',
+                '"cast"': 'JSONB',  # Quoted because 'cast' is a reserved keyword
                 'crew': 'JSONB',
                 'keywords': 'JSONB',
                 'runtime': 'INTEGER',
@@ -57,16 +57,18 @@ def migrate_database():
             # Add missing columns
             columns_added = 0
             for col_name, col_type in new_columns.items():
-                if col_name not in existing_columns:
+                # Remove quotes for comparison (stored columns don't have quotes)
+                col_name_clean = col_name.strip('"')
+                if col_name_clean not in existing_columns:
                     try:
-                        # Quote column name to handle reserved keywords like 'cast'
-                        query = text(f'ALTER TABLE movies ADD COLUMN "{col_name}" {col_type}')
+                        # Use column name with quotes (already included in col_name)
+                        query = text(f'ALTER TABLE movies ADD COLUMN {col_name} {col_type}')
                         conn.execute(query)
                         conn.commit()  # Commit each column addition separately
-                        print(f"✅ Added column: {col_name} ({col_type})")
+                        print(f"✅ Added column: {col_name_clean} ({col_type})")
                         columns_added += 1
                     except Exception as e:
-                        print(f"⚠️  Warning adding {col_name}: {e}")
+                        print(f"⚠️  Warning adding {col_name_clean}: {e}")
                         conn.rollback()  # Rollback on error to continue with other columns
             
             if columns_added == 0:

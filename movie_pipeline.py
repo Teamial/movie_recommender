@@ -99,6 +99,7 @@ class MovieETLPipeline:
                 movie['budget'] = details.get('budget')
                 movie['revenue'] = details.get('revenue')
                 movie['tagline'] = details.get('tagline')
+                movie['original_language'] = details.get('original_language')
                 
                 # Get similar movies
                 similar = details.get('similar', {}).get('results', [])
@@ -143,7 +144,7 @@ class MovieETLPipeline:
         
         # Handle optional enriched columns
         optional_cols = ['cast', 'crew', 'keywords', 'runtime', 'budget', 
-                        'revenue', 'tagline', 'similar_movie_ids', 'trailer_key']
+                        'revenue', 'tagline', 'similar_movie_ids', 'trailer_key', 'original_language']
         
         # Select columns that exist
         cols_to_keep = [col for col in required_cols if col in df.columns]
@@ -171,8 +172,11 @@ class MovieETLPipeline:
         # Transform cast and crew to JSON strings
         if 'cast' in df_clean.columns:
             df_clean['cast'] = df_clean['cast'].apply(
-                lambda x: json.dumps([{'name': c['name'], 'character': c.get('character', '')} 
-                                     for c in x[:10]]) if isinstance(x, list) else None
+                lambda x: json.dumps([{
+                    'name': c['name'], 
+                    'character': c.get('character', ''),
+                    'profile_path': c.get('profile_path', None)
+                } for c in x[:10]]) if isinstance(x, list) else None
             )
         
         if 'crew' in df_clean.columns:
@@ -225,7 +229,7 @@ class MovieETLPipeline:
                         poster_url VARCHAR(500),
                         backdrop_url VARCHAR(500),
                         genres JSONB,
-                        cast JSONB,
+                        "cast" JSONB,
                         crew JSONB,
                         keywords JSONB,
                         runtime INTEGER,
@@ -234,6 +238,7 @@ class MovieETLPipeline:
                         tagline TEXT,
                         similar_movie_ids JSONB,
                         trailer_key VARCHAR(100),
+                        original_language VARCHAR(10),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
@@ -297,11 +302,13 @@ class MovieETLPipeline:
                 
                 # Build column list dynamically based on available columns
                 columns = list(row_dict.keys())
+                # Quote column names to handle reserved keywords like 'cast'
+                quoted_columns = [f'"{col}"' for col in columns]
                 placeholders = ', '.join([f':{col}' for col in columns])
-                update_set = ', '.join([f'{col} = :{col}' for col in columns if col != 'id'])
+                update_set = ', '.join([f'"{col}" = :{col}' for col in columns if col != 'id'])
                 
                 query = text(f"""
-                    INSERT INTO movies ({', '.join(columns)})
+                    INSERT INTO movies ({', '.join(quoted_columns)})
                     VALUES ({placeholders})
                     ON CONFLICT (id) DO UPDATE SET
                         {update_set},
