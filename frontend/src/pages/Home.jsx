@@ -49,6 +49,14 @@ const Home = () => {
   };
 
   const fetchUserData = async () => {
+    if (!user) {
+      // Clear user data if not authenticated
+      setFavoriteIds(new Set());
+      setWatchlistIds(new Set());
+      setUserRatings({});
+      return;
+    }
+
     try {
       const [favResponse, watchResponse, ratingsResponse] = await Promise.all([
         getFavorites(),
@@ -68,6 +76,10 @@ const Home = () => {
       setUserRatings(ratings);
     } catch (error) {
       console.error('Error fetching user data:', error);
+      // Clear user data on error
+      setFavoriteIds(new Set());
+      setWatchlistIds(new Set());
+      setUserRatings({});
     }
   };
 

@@ -3,6 +3,7 @@ import { Heart, Bookmark, Star } from 'lucide-react';
 import { addFavorite, removeFavorite, addToWatchlist, removeFromWatchlist, createRating } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import MovieDetailModal from './MovieDetailModal';
+import { getPosterUrl } from '../utils/imageUtils';
 
 const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) => {
   const { user } = useAuth();
@@ -81,17 +82,20 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
         onClick={() => setShowModal(true)}
       >
         <div className="relative aspect-[2/3]">
-          {movie.poster_url ? (
+          {getPosterUrl(movie) ? (
             <img
-              src={movie.poster_url}
+              src={getPosterUrl(movie)}
               alt={movie.title}
               className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
             />
-          ) : (
-            <div className="w-full h-full bg-muted flex items-center justify-center">
-              <span className="text-muted-foreground">No Image</span>
-            </div>
-          )}
+          ) : null}
+          <div className="w-full h-full bg-muted flex items-center justify-center" style={{ display: movie.poster_url ? 'none' : 'flex' }}>
+            <span className="text-muted-foreground">No Image</span>
+          </div>
           
           {/* Quick Actions Overlay */}
           {user && (

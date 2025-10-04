@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List
 from database import get_db
-from models import Rating as RatingModel, Movie as MovieModel
+from models import Rating as RatingModel, Movie as MovieModel, User as UserModel
 from schemas import RatingCreate, RatingResponse, RatingWithMovie
 
 router = APIRouter(prefix="/ratings", tags=["ratings"])

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from database import engine, Base
 from routes import movies, ratings, auth, user_features, pipeline, onboarding, analytics
 import logging
@@ -72,3 +73,35 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.get("/proxy/image/{path:path}")
+def proxy_image(path: str):
+    """Proxy TMDB images to avoid CORS issues"""
+    import requests
+    from fastapi.responses import Response
+    
+    try:
+        # Construct the full TMDB URL
+        tmdb_url = f"https://image.tmdb.org/t/p/{path}"
+        
+        # Fetch the image from TMDB
+        response = requests.get(tmdb_url, timeout=10)
+        response.raise_for_status()
+        
+        # Return the image with proper headers
+        return Response(
+            content=response.content,
+            media_type=response.headers.get('content-type', 'image/jpeg'),
+            headers={
+                'Cache-Control': 'public, max-age=86400',  # Cache for 24 hours
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+    except Exception as e:
+        logger.warning(f"Failed to proxy image {path}: {e}")
+        # Return a placeholder or error response
+        return Response(
+            content=b'', 
+            media_type='image/svg+xml',
+            status_code=404
+        )

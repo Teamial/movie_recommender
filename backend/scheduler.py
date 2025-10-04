@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 # Add parent directory to path to import movie_pipeline
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from movie_pipeline import MovieETLPipeline
+from historical_movie_import import HistoricalMovieImporter
 
 load_dotenv()
 
@@ -37,6 +38,7 @@ class PipelineScheduler:
             raise ValueError("DATABASE_URL not found in environment")
         
         self.pipeline = MovieETLPipeline(self.tmdb_api_key, self.database_url)
+        self.historical_importer = HistoricalMovieImporter(self.tmdb_api_key, self.database_url)
         self._setup_jobs()
     
     def _setup_jobs(self):
@@ -87,6 +89,28 @@ class PipelineScheduler:
             max_instances=1
         )
         logger.info("✓ Scheduled: Embedding refresh daily at 4:00 AM")
+        
+        # Historical import: Every Monday at 1 AM (import recent movies from last 30 days)
+        self.scheduler.add_job(
+            func=self._historical_recent_update,
+            trigger=CronTrigger(day_of_week='mon', hour=1, minute=0),
+            id='historical_recent',
+            name='Historical Recent Update (Last 30 Days)',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("✓ Scheduled: Historical recent update on Mondays at 1:00 AM")
+        
+        # Historical batch import: Every first Sunday of month at 12 AM (import 5 years of movies)
+        self.scheduler.add_job(
+            func=self._historical_batch_import,
+            trigger=CronTrigger(day=1, day_of_week='sun', hour=0, minute=0),
+            id='historical_batch',
+            name='Historical Batch Import (5 Years)',
+            replace_existing=True,
+            max_instances=1
+        )
+        logger.info("✓ Scheduled: Historical batch import on first Sunday of month at 12:00 AM")
     
     def _quick_update(self):
         """Quick update with popular and trending movies"""
@@ -163,12 +187,47 @@ class PipelineScheduler:
         except Exception as e:
             logger.error(f"❌ Embedding refresh failed: {e}", exc_info=True)
     
+    def _historical_recent_update(self):
+        """Import recent movies from the last 30 days"""
+        logger.info("🆕 Starting historical recent update...")
+        try:
+            result = self.historical_importer.import_recent_movies(days_back=30)
+            if result['success']:
+                logger.info(f"✅ Historical recent update completed: {result['movies_processed']} movies processed")
+            else:
+                logger.error(f"❌ Historical recent update failed: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            logger.error(f"❌ Historical recent update failed: {e}", exc_info=True)
+    
+    def _historical_batch_import(self):
+        """Import a batch of historical movies (5 years)"""
+        logger.info("📚 Starting historical batch import...")
+        try:
+            # Import movies from 5 years ago to current year
+            current_year = datetime.now().year
+            start_year = current_year - 5
+            
+            result = self.historical_importer.import_movies_by_year_range(
+                start_year=start_year,
+                end_year=current_year,
+                pages_per_year=15,  # 15 pages = ~300 movies per year
+                batch_years=2  # Process 2 years at a time
+            )
+            
+            if result['success']:
+                logger.info(f"✅ Historical batch import completed: {result['total_processed']} movies processed")
+                logger.info(f"📅 Years processed: {len(result['years_processed'])}")
+            else:
+                logger.error(f"❌ Historical batch import failed: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            logger.error(f"❌ Historical batch import failed: {e}", exc_info=True)
+    
     def run_manual_update(self, update_type: str = 'quick'):
         """
         Manually trigger a pipeline update
         
         Args:
-            update_type: 'quick', 'daily', or 'full'
+            update_type: 'quick', 'daily', 'full', 'historical_recent', or 'historical_batch'
         """
         logger.info(f"🔧 Manual {update_type} update triggered")
         
@@ -178,8 +237,13 @@ class PipelineScheduler:
             self._daily_update()
         elif update_type == 'full':
             self._weekly_enrichment()
+        elif update_type == 'historical_recent':
+            self._historical_recent_update()
+        elif update_type == 'historical_batch':
+            self._historical_batch_import()
         else:
             logger.error(f"Unknown update type: {update_type}")
+            logger.info("Available types: quick, daily, full, historical_recent, historical_batch")
     
     def start(self):
         """Start the scheduler"""

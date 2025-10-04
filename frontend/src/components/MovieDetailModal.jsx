@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { getPosterUrl, getBackdropUrl, getProfileUrl } from '../utils/imageUtils';
 import { getLanguageName, formatViews, getTrendingRank } from '@/utils/movieHelpers';
 
 // Enhanced color palette extraction
@@ -216,9 +217,12 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
 
   useEffect(() => {
     if (movie?.backdrop_url) {
-      extractMoviePalette(movie.backdrop_url).then(palette => {
-        setTheme(palette);
-      });
+      const backdropUrl = getBackdropUrl(movie);
+      if (backdropUrl) {
+        extractMoviePalette(backdropUrl).then(palette => {
+          setTheme(palette);
+        });
+      }
     }
   }, [movie?.backdrop_url]);
 
@@ -345,7 +349,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                     animate={{ scale: 1 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
                     className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${movie.backdrop_url || movie.poster_url})` }}
+                    style={{ backgroundImage: `url(${getBackdropUrl(movie) || getPosterUrl(movie)})` }}
                   />
                   
                   {/* Themed Gradient Overlay */}
@@ -367,12 +371,12 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                     <div className="max-w-7xl mx-auto">
                       <div className="flex flex-col md:flex-row items-end gap-6 md:gap-8">
                         {/* Poster */}
-                        {movie.poster_url && (
+                        {getPosterUrl(movie) && (
                           <motion.img 
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2, duration: 0.5 }}
-                            src={movie.poster_url} 
+                            src={getPosterUrl(movie)} 
                             alt={movie.title}
                             className="w-44 md:w-56 h-64 md:h-80 object-cover rounded-2xl shadow-2xl ring-2 ring-white/10"
                           />
@@ -611,7 +615,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                 >
                                   <Avatar className="h-14 w-14 ring-2" style={{ ringColor: theme.chipBorder }}>
                                     <AvatarImage 
-                                      src={actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : ''} 
+                                      src={getProfileUrl(actor.profile_path)} 
                                       alt={actor.name}
                                       className="object-cover"
                                     />
