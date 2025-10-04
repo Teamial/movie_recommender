@@ -132,3 +132,52 @@ class PipelineRun(Base):
     
     def __repr__(self):
         return f"<PipelineRun(id={self.id}, status={self.status}, date={self.run_date})>"
+
+class RecommendationEvent(Base):
+    """Track recommendations shown to users for A/B testing and analytics"""
+    __tablename__ = "recommendation_events"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    movie_id = Column(Integer, ForeignKey("movies.id"), nullable=False, index=True)
+    algorithm = Column(String(50), nullable=False, index=True)  # svd, item_cf, content, hybrid, etc.
+    recommendation_score = Column(Float)  # Confidence/score from algorithm
+    position = Column(Integer)  # Position in recommendation list (1-based)
+    context = Column(JSON)  # Context at time of recommendation (time_period, is_weekend, etc.)
+    
+    # User interactions
+    clicked = Column(Boolean, default=False, index=True)
+    clicked_at = Column(DateTime, nullable=True)
+    rated = Column(Boolean, default=False)
+    rated_at = Column(DateTime, nullable=True)
+    rating_value = Column(Float, nullable=True)
+    added_to_watchlist = Column(Boolean, default=False)
+    added_to_favorites = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    def __repr__(self):
+        return f"<RecommendationEvent(user={self.user_id}, movie={self.movie_id}, algo={self.algorithm})>"
+
+class ModelUpdateLog(Base):
+    """Track incremental model updates for continuous learning"""
+    __tablename__ = "model_update_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    model_type = Column(String(50), nullable=False)  # svd, item_cf, etc.
+    update_type = Column(String(50), nullable=False)  # full_retrain, incremental, warm_start
+    ratings_processed = Column(Integer)  # Number of new ratings processed
+    update_trigger = Column(String(100))  # What triggered update (scheduled, threshold, manual)
+    
+    # Model metrics
+    metrics = Column(JSON)  # Store RMSE, MAE, explained_variance, etc.
+    
+    # Performance
+    duration_seconds = Column(Float)
+    success = Column(Boolean, default=True)
+    error_message = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    def __repr__(self):
+        return f"<ModelUpdateLog(type={self.model_type}, update={self.update_type}, time={self.created_at})>"

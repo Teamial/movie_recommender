@@ -85,6 +85,27 @@ def get_recommendations(
     recommender = MovieRecommender(db)
     recommendations = recommender.get_hybrid_recommendations(user_id, limit, use_context=use_context)
     
+    # Track recommendations for A/B testing
+    try:
+        context = recommender._get_contextual_features(user_id) if use_context else None
+        context_data = {
+            'time_period': context['temporal']['time_period'],
+            'is_weekend': context['temporal']['is_weekend']
+        } if context else None
+        
+        for position, movie in enumerate(recommendations, start=1):
+            recommender.track_recommendation(
+                user_id=user_id,
+                movie_id=movie.id,
+                algorithm='hybrid',
+                position=position,
+                context=context_data
+            )
+    except Exception as e:
+        # Don't fail the request if tracking fails
+        import logging
+        logging.warning(f"Failed to track recommendations: {e}")
+    
     return recommendations
 
 @router.get("/recommendations/context")

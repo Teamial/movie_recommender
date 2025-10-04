@@ -987,3 +987,423 @@ class MovieRecommender:
                 'recent_movies_count': len(context['sequential_patterns'])
             }
         }
+    
+    # =============================================================================
+    # CONTINUOUS LEARNING & A/B TESTING
+    # =============================================================================
+    
+    def incremental_update(self, user_id: int, movie_id: int, rating: float) -> dict:
+        """
+        Update recommendation model incrementally with new rating
+        
+        Implements a warm-start approach:
+        1. Check if model needs update (based on rating count threshold)
+        2. Perform incremental update if threshold reached
+        3. Log update metrics
+        
+        Args:
+            user_id: User who added the rating
+            movie_id: Movie that was rated
+            rating: Rating value
+            
+        Returns:
+            dict with update status and metrics
+        """
+        from backend.models import ModelUpdateLog, Rating
+        import time
+        
+        result = {
+            'updated': False,
+            'update_type': None,
+            'reason': None,
+            'metrics': {}
+        }
+        
+        try:
+            # Count ratings since last model update
+            last_update = self.db.query(ModelUpdateLog)\
+                .filter(ModelUpdateLog.model_type == 'svd')\
+                .filter(ModelUpdateLog.success == True)\
+                .order_by(ModelUpdateLog.created_at.desc())\
+                .first()
+            
+            # Determine ratings threshold for update
+            update_threshold = getattr(self, 'incremental_update_threshold', 50)
+            
+            if last_update:
+                new_ratings_count = self.db.query(Rating)\
+                    .filter(Rating.timestamp > last_update.created_at)\
+                    .count()
+            else:
+                new_ratings_count = self.db.query(Rating).count()
+            
+            # Trigger update if threshold reached
+            if new_ratings_count >= update_threshold:
+                start_time = time.time()
+                
+                # Invalidate cache to force rebuild on next request
+                self.invalidate_svd_cache()
+                
+                # Pre-build model now
+                success = self._build_svd_model()
+                
+                duration = time.time() - start_time
+                
+                # Calculate metrics if model built successfully
+                metrics = {}
+                if success and self._svd_model:
+                    metrics = {
+                        'explained_variance_ratio': float(self._svd_model.explained_variance_ratio_.sum()),
+                        'n_components': self._svd_model.n_components,
+                        'n_users': len(self._svd_user_ids) if self._svd_user_ids else 0,
+                        'n_movies': len(self._svd_movie_ids) if self._svd_movie_ids else 0
+                    }
+                
+                # Log the update
+                log_entry = ModelUpdateLog(
+                    model_type='svd',
+                    update_type='warm_start_rebuild',
+                    ratings_processed=new_ratings_count,
+                    update_trigger=f'threshold_reached_{update_threshold}',
+                    metrics=metrics,
+                    duration_seconds=duration,
+                    success=success
+                )
+                self.db.add(log_entry)
+                self.db.commit()
+                
+                result.update({
+                    'updated': True,
+                    'update_type': 'warm_start_rebuild',
+                    'reason': f'{new_ratings_count} new ratings (threshold: {update_threshold})',
+                    'metrics': metrics,
+                    'duration_seconds': duration
+                })
+                
+                logging.info(f"Incremental update completed: {new_ratings_count} ratings processed")
+            else:
+                result['reason'] = f'Threshold not reached ({new_ratings_count}/{update_threshold} ratings)'
+        
+        except Exception as e:
+            logging.error(f"Error in incremental_update: {e}")
+            result['error'] = str(e)
+        
+        return result
+    
+    def force_model_update(self, update_type: str = 'full_retrain') -> dict:
+        """
+        Force a model update regardless of threshold
+        
+        Args:
+            update_type: Type of update ('full_retrain', 'warm_start')
+            
+        Returns:
+            dict with update status and metrics
+        """
+        from backend.models import ModelUpdateLog, Rating
+        import time
+        
+        result = {
+            'updated': False,
+            'update_type': update_type,
+            'metrics': {}
+        }
+        
+        try:
+            start_time = time.time()
+            
+            # Invalidate cache
+            self.invalidate_svd_cache()
+            
+            # Rebuild model
+            success = self._build_svd_model()
+            
+            duration = time.time() - start_time
+            
+            # Calculate metrics
+            metrics = {}
+            if success and self._svd_model:
+                metrics = {
+                    'explained_variance_ratio': float(self._svd_model.explained_variance_ratio_.sum()),
+                    'n_components': self._svd_model.n_components,
+                    'n_users': len(self._svd_user_ids) if self._svd_user_ids else 0,
+                    'n_movies': len(self._svd_movie_ids) if self._svd_movie_ids else 0
+                }
+            
+            # Count total ratings
+            total_ratings = self.db.query(Rating).count()
+            
+            # Log the update
+            log_entry = ModelUpdateLog(
+                model_type='svd',
+                update_type=update_type,
+                ratings_processed=total_ratings,
+                update_trigger='manual_force_update',
+                metrics=metrics,
+                duration_seconds=duration,
+                success=success
+            )
+            self.db.add(log_entry)
+            self.db.commit()
+            
+            result.update({
+                'updated': True,
+                'metrics': metrics,
+                'duration_seconds': duration,
+                'ratings_processed': total_ratings
+            })
+            
+            logging.info(f"Force model update completed: {update_type}")
+        
+        except Exception as e:
+            logging.error(f"Error in force_model_update: {e}")
+            result['error'] = str(e)
+        
+        return result
+    
+    def track_recommendation(
+        self, 
+        user_id: int, 
+        movie_id: int, 
+        algorithm: str,
+        position: int,
+        score: float = None,
+        context: dict = None
+    ) -> int:
+        """
+        Track a recommendation shown to user for A/B testing
+        
+        Args:
+            user_id: User who received recommendation
+            movie_id: Movie recommended
+            algorithm: Algorithm that generated recommendation (svd, item_cf, content, hybrid)
+            position: Position in recommendation list (1-based)
+            score: Recommendation score/confidence
+            context: Additional context (time_period, is_weekend, etc.)
+            
+        Returns:
+            Recommendation event ID
+        """
+        from backend.models import RecommendationEvent
+        
+        try:
+            event = RecommendationEvent(
+                user_id=user_id,
+                movie_id=movie_id,
+                algorithm=algorithm,
+                recommendation_score=score,
+                position=position,
+                context=context
+            )
+            self.db.add(event)
+            self.db.commit()
+            
+            return event.id
+        
+        except Exception as e:
+            logging.error(f"Error tracking recommendation: {e}")
+            self.db.rollback()
+            return None
+    
+    def track_recommendation_click(self, user_id: int, movie_id: int):
+        """
+        Track when user clicks on a recommended movie
+        
+        Args:
+            user_id: User who clicked
+            movie_id: Movie that was clicked
+        """
+        from backend.models import RecommendationEvent
+        from datetime import datetime
+        
+        try:
+            # Find the most recent recommendation event for this user-movie pair
+            event = self.db.query(RecommendationEvent)\
+                .filter(RecommendationEvent.user_id == user_id)\
+                .filter(RecommendationEvent.movie_id == movie_id)\
+                .filter(RecommendationEvent.clicked == False)\
+                .order_by(RecommendationEvent.created_at.desc())\
+                .first()
+            
+            if event:
+                event.clicked = True
+                event.clicked_at = datetime.utcnow()
+                self.db.commit()
+                
+                logging.info(f"Tracked click: user={user_id}, movie={movie_id}, algo={event.algorithm}")
+        
+        except Exception as e:
+            logging.error(f"Error tracking click: {e}")
+            self.db.rollback()
+    
+    def track_recommendation_rating(self, user_id: int, movie_id: int, rating: float):
+        """
+        Track when user rates a recommended movie
+        
+        Args:
+            user_id: User who rated
+            movie_id: Movie that was rated
+            rating: Rating value
+        """
+        from backend.models import RecommendationEvent
+        from datetime import datetime
+        
+        try:
+            # Find recommendation event for this user-movie pair
+            event = self.db.query(RecommendationEvent)\
+                .filter(RecommendationEvent.user_id == user_id)\
+                .filter(RecommendationEvent.movie_id == movie_id)\
+                .filter(RecommendationEvent.rated == False)\
+                .order_by(RecommendationEvent.created_at.desc())\
+                .first()
+            
+            if event:
+                event.rated = True
+                event.rated_at = datetime.utcnow()
+                event.rating_value = rating
+                self.db.commit()
+                
+                logging.info(f"Tracked rating: user={user_id}, movie={movie_id}, rating={rating}, algo={event.algorithm}")
+        
+        except Exception as e:
+            logging.error(f"Error tracking rating: {e}")
+            self.db.rollback()
+    
+    def track_recommendation_performance(
+        self, 
+        user_id: int, 
+        movie_id: int, 
+        action: str,
+        value: any = None
+    ):
+        """
+        Generic method to track recommendation interactions
+        
+        Args:
+            user_id: User performing action
+            movie_id: Movie being interacted with
+            action: Type of action (click, rate, favorite, watchlist)
+            value: Optional value (e.g., rating value)
+        """
+        from backend.models import RecommendationEvent
+        from datetime import datetime
+        
+        try:
+            # Find most recent recommendation event
+            event = self.db.query(RecommendationEvent)\
+                .filter(RecommendationEvent.user_id == user_id)\
+                .filter(RecommendationEvent.movie_id == movie_id)\
+                .order_by(RecommendationEvent.created_at.desc())\
+                .first()
+            
+            if event:
+                if action == 'click':
+                    event.clicked = True
+                    event.clicked_at = datetime.utcnow()
+                elif action == 'rate':
+                    event.rated = True
+                    event.rated_at = datetime.utcnow()
+                    event.rating_value = value
+                elif action == 'favorite':
+                    event.added_to_favorites = True
+                elif action == 'watchlist':
+                    event.added_to_watchlist = True
+                
+                self.db.commit()
+                
+                logging.info(f"Tracked {action}: user={user_id}, movie={movie_id}, algo={event.algorithm}")
+        
+        except Exception as e:
+            logging.error(f"Error tracking performance: {e}")
+            self.db.rollback()
+    
+    def get_algorithm_performance(self, days: int = 30) -> dict:
+        """
+        Get performance metrics for each recommendation algorithm
+        
+        Args:
+            days: Number of days to analyze
+            
+        Returns:
+            dict with metrics per algorithm
+        """
+        from backend.models import RecommendationEvent
+        from datetime import datetime, timedelta
+        from sqlalchemy import func
+        
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            
+            # Query performance by algorithm
+            results = self.db.query(
+                RecommendationEvent.algorithm,
+                func.count(RecommendationEvent.id).label('total_recommendations'),
+                func.sum(func.cast(RecommendationEvent.clicked, Integer)).label('total_clicks'),
+                func.sum(func.cast(RecommendationEvent.rated, Integer)).label('total_ratings'),
+                func.avg(RecommendationEvent.rating_value).label('avg_rating_value'),
+                func.sum(func.cast(RecommendationEvent.added_to_favorites, Integer)).label('total_favorites'),
+                func.sum(func.cast(RecommendationEvent.added_to_watchlist, Integer)).label('total_watchlist')
+            ).filter(
+                RecommendationEvent.created_at >= cutoff_date
+            ).group_by(
+                RecommendationEvent.algorithm
+            ).all()
+            
+            # Format results
+            performance = {}
+            for row in results:
+                algo = row.algorithm
+                total = row.total_recommendations or 0
+                clicks = row.total_clicks or 0
+                ratings = row.total_ratings or 0
+                
+                performance[algo] = {
+                    'total_recommendations': total,
+                    'total_clicks': clicks,
+                    'total_ratings': ratings,
+                    'avg_rating': float(row.avg_rating_value) if row.avg_rating_value else None,
+                    'total_favorites': row.total_favorites or 0,
+                    'total_watchlist': row.total_watchlist or 0,
+                    'ctr': (clicks / total * 100) if total > 0 else 0,  # Click-through rate
+                    'rating_rate': (ratings / total * 100) if total > 0 else 0  # Rating conversion rate
+                }
+            
+            return performance
+        
+        except Exception as e:
+            logging.error(f"Error getting algorithm performance: {e}")
+            return {}
+    
+    def get_model_update_history(self, limit: int = 10) -> list:
+        """
+        Get recent model update history
+        
+        Args:
+            limit: Number of recent updates to retrieve
+            
+        Returns:
+            list of update log dictionaries
+        """
+        from backend.models import ModelUpdateLog
+        
+        try:
+            logs = self.db.query(ModelUpdateLog)\
+                .order_by(ModelUpdateLog.created_at.desc())\
+                .limit(limit)\
+                .all()
+            
+            return [{
+                'id': log.id,
+                'model_type': log.model_type,
+                'update_type': log.update_type,
+                'ratings_processed': log.ratings_processed,
+                'update_trigger': log.update_trigger,
+                'metrics': log.metrics,
+                'duration_seconds': log.duration_seconds,
+                'success': log.success,
+                'created_at': log.created_at.isoformat() if log.created_at else None
+            } for log in logs]
+        
+        except Exception as e:
+            logging.error(f"Error getting model update history: {e}")
+            return []
