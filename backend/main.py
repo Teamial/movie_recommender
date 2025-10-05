@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 from fastapi.responses import RedirectResponse
 from .database import engine, Base
 from .routes import movies, ratings, auth, user_features, pipeline, onboarding, analytics
@@ -20,9 +21,10 @@ app = FastAPI(
 )
 
 # CORS middleware for React frontend
+allowed_origins = os.getenv("BACKEND_ALLOWED_ORIGINS", "").split(",") if os.getenv("BACKEND_ALLOWED_ORIGINS") else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

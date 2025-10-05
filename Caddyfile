@@ -1,0 +1,10 @@
+:80 {
+  encode gzip
+
+  handle_path /api/* {
+    reverse_proxy backend:8000
+  }
+
+  # Send everything else to the frontend (nginx) container
+  reverse_proxy frontend:80
+}
