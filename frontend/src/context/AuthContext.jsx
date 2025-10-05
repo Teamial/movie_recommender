@@ -23,6 +23,12 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkAuth();
+    // Listen for global auth-logout (e.g., 401 from axios interceptor)
+    const onLogout = () => {
+      setUser(null);
+    };
+    window.addEventListener('auth-logout', onLogout);
+    return () => window.removeEventListener('auth-logout', onLogout);
   }, []);
 
   const checkAuth = async () => {

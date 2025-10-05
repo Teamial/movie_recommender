@@ -11,7 +11,9 @@ from .models import User
 # Security config
 SECRET_KEY = "your-secret-key-change-this-in-production"  # Change this!
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+# Extend session duration to reduce unexpected logouts while idle
+# Consider implementing refresh tokens for production security
+ACCESS_TOKEN_EXPIRE_MINUTES = 720  # 12 hours
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")

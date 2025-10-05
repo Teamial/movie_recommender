@@ -15,6 +15,27 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Global 401 handler to avoid silent logout loops
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    if (status === 401) {
+      try {
+        localStorage.removeItem('token');
+      } catch {}
+      // Notify auth context and redirect to login if not already there
+      try {
+        window.dispatchEvent(new Event('auth-logout'));
+      } catch {}
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth
 export const register = (data) => api.post('/auth/register', data);
 export const login = (data) => api.post('/auth/login', data, {
