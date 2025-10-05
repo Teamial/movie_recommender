@@ -48,22 +48,51 @@ def normalize_database_url(raw_url: str | None) -> str:
         return fallback
 
 
+# Get DATABASE_URL from environment
 DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL"))
 
-# Create engine with safer defaults for transient networks (laptops, dev)
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,          # validate connections before using
-    pool_recycle=1800,           # recycle connections every 30 minutes
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Log database connection info (without password)
+if DATABASE_URL:
+    try:
+        parsed = urlparse(DATABASE_URL)
+        safe_url = f"{parsed.scheme}://{parsed.username}:***@{parsed.hostname}:{parsed.port}{parsed.path}"
+        logger.info(f"Using database: {safe_url}")
+    except:
+        logger.info(f"Using database: {DATABASE_URL[:50]}...")
 
+# Create engine with connection pooling and error handling
+try:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # Verify connections before use
+        pool_recycle=300,    # Recycle connections every 5 minutes
+        echo=False           # Set to True for SQL debugging
+    )
+    logger.info("Database engine created successfully")
+except Exception as e:
+    logger.error(f"Failed to create database engine: {e}")
+    raise
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Dependency for routes
+
 def get_db():
+    """Dependency to get database session."""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+def test_connection():
+    """Test database connection."""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute("SELECT 1")
+            logger.info("Database connection test successful")
+            return True
+    except Exception as e:
+        logger.error(f"Database connection test failed: {e}")
+        return False
