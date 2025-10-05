@@ -10,16 +10,13 @@ COPY frontend/package*.json ./
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm ci --silent || npm install --no-audit --no-fund --silent
 
-# Copy source code (only frontend files)
+# Copy source code (only essential files)
 COPY frontend/src ./src
 COPY frontend/public ./public
 COPY frontend/index.html ./
 COPY frontend/vite.config.js ./
 COPY frontend/tailwind.config.js ./
 COPY frontend/postcss.config.js ./
-COPY frontend/components.json ./
-COPY frontend/jsconfig.json ./
-COPY frontend/eslint.config.js ./
 
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
