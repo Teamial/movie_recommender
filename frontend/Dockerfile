@@ -16,7 +16,14 @@ COPY frontend/public ./public
 COPY frontend/index.html ./
 COPY frontend/vite.config.js ./
 COPY frontend/tailwind.config.js ./
-COPY frontend/postcss.config.js ./
+
+# Create minimal postcss config inline
+RUN echo 'module.exports = {' > postcss.config.js && \
+    echo '  plugins: {' >> postcss.config.js && \
+    echo '    tailwindcss: {},' >> postcss.config.js && \
+    echo '    autoprefixer: {},' >> postcss.config.js && \
+    echo '  },' >> postcss.config.js && \
+    echo '}' >> postcss.config.js
 
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
