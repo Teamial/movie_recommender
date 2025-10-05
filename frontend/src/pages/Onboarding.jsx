@@ -37,6 +37,13 @@ const Onboarding = () => {
 
   const totalSteps = 5;
 
+  // If already completed onboarding, redirect away
+  useEffect(() => {
+    if (user?.onboarding_completed) {
+      navigate('/');
+    }
+  }, [user, navigate]);
+
   // Fetch popular movies for rating step
   useEffect(() => {
     if (currentStep === 3) {
@@ -134,24 +141,10 @@ const Onboarding = () => {
       const response = await api.post('/onboarding/complete', onboardingPayload);
       console.log('Onboarding completed:', response.data);
 
-      // Also save to localStorage for frontend reference
-      const onboardingData = {
-        demographics: demographics,
-        genres: {
-          liked: Object.keys(selectedGenres).filter(g => selectedGenres[g] === 'like'),
-          disliked: Object.keys(selectedGenres).filter(g => selectedGenres[g] === 'dislike')
-        },
-        completedAt: new Date().toISOString()
-      };
-      localStorage.setItem(`onboarding_data_${user.id}`, JSON.stringify(onboardingData));
-      localStorage.setItem(`onboarding_complete_${user.id}`, 'true');
-
       // Redirect to recommendations
       navigate('/recommendations');
     } catch (error) {
       console.error('Error completing onboarding:', error);
-      // Even if onboarding fails, mark as complete locally and redirect
-      localStorage.setItem(`onboarding_complete_${user.id}`, 'true');
       navigate('/recommendations');
     } finally {
       setLoading(false);
