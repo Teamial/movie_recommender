@@ -7,15 +7,43 @@
  * @param {string} tmdbUrl - The original TMDB image URL
  * @returns {string} - The proxied URL
  */
-export const getProxiedImageUrl = (tmdbUrl) => {
-  if (!tmdbUrl) return null;
-  
-  // Extract the path from TMDB URL
-  // Example: https://image.tmdb.org/t/p/w500/abc123.jpg -> w500/abc123.jpg
-  const tmdbPath = tmdbUrl.replace('https://image.tmdb.org/t/p/', '');
-  
-  // Return our proxy URL
-  return `http://localhost:8000/proxy/image/${tmdbPath}`;
+export const getProxiedImageUrl = (tmdbUrlOrPath) => {
+  if (!tmdbUrlOrPath) return null;
+
+  const toPath = (value) => {
+    if (!value) return null;
+
+    // If value is already pointing at some host's /proxy/image/<path>, normalize to just the path
+    // Examples:
+    //   http://localhost:8000/proxy/image/w500/abc.jpg -> w500/abc.jpg
+    //   https://api.example.com/proxy/image/w1280/def.jpg -> w1280/def.jpg
+    const proxyMatch = value.match(/^https?:\/\/[^/]+\/proxy\/image\/(.+)$/i);
+    if (proxyMatch) return proxyMatch[1];
+    const rootProxyMatch = value.match(/^\/proxy\/image\/(.+)$/i);
+    if (rootProxyMatch) return rootProxyMatch[1];
+
+    // Full TMDB URL -> extract after /t/p/
+    if (/^https?:\/\/image\.tmdb\.org\/.*/i.test(value)) {
+      return value.replace(/^https?:\/\/image\.tmdb\.org\/t\/p\//i, '');
+    }
+
+    // Already looks like a TMDB path with size e.g. "/t/p/w500/abc.jpg" or "/w500/abc.jpg"
+    if (/^\/t\/p\//.test(value)) {
+      return value.replace(/^\/t\/p\//, '').replace(/^\//, '');
+    }
+    if (/^\/w\d+\//.test(value) || /^w\d+\//.test(value)) {
+      return value.replace(/^\//, '');
+    }
+
+    // Bare poster path like "/abc.jpg" -> the caller must prefix a size later
+    return value.replace(/^\//, '');
+  };
+
+  const tmdbPath = toPath(tmdbUrlOrPath);
+  if (!tmdbPath) return null;
+
+  // Return our proxy URL via same-origin API gateway (works on mobile and prod)
+  return `/api/proxy/image/${tmdbPath}`;
 };
 
 /**
@@ -25,14 +53,26 @@ export const getProxiedImageUrl = (tmdbUrl) => {
  * @returns {string|null} - Poster URL or null
  */
 export const getPosterUrl = (movie, size = 'w500') => {
-  if (!movie?.poster_url) return null;
-  
-  // If it's already a TMDB URL, proxy it
-  if (movie.poster_url.includes('image.tmdb.org')) {
-    return getProxiedImageUrl(movie.poster_url);
+  const value = movie?.poster_url;
+  if (!value) return null;
+
+  // If it's already a proxy URL (any host)/proxy/image/..., normalize via helper
+  if (/^https?:\/\/[^/]+\/proxy\/image\//i.test(value) || /^\/proxy\/image\//i.test(value)) {
+    return getProxiedImageUrl(value);
   }
-  
-  return movie.poster_url;
+  // If it's a full external URL but not TMDB or our proxy, return as-is
+  if (/^https?:\/\//i.test(value) && !/image\.tmdb\.org/i.test(value)) {
+    return value;
+  }
+
+  // If full TMDB URL or TMDB path with size, proxy directly
+  if (/image\.tmdb\.org/i.test(value) || /^\/?t\/p\//.test(value) || /^\/?w\d+\//.test(value)) {
+    return getProxiedImageUrl(value.startsWith('/') ? value : value);
+  }
+
+  // Otherwise assume a bare poster path like "/abc.jpg" and prefix size
+  const path = `${size}/${value.replace(/^\//, '')}`;
+  return getProxiedImageUrl(path);
 };
 
 /**
@@ -42,14 +82,22 @@ export const getPosterUrl = (movie, size = 'w500') => {
  * @returns {string|null} - Backdrop URL or null
  */
 export const getBackdropUrl = (movie, size = 'w1280') => {
-  if (!movie?.backdrop_url) return null;
-  
-  // If it's already a TMDB URL, proxy it
-  if (movie.backdrop_url.includes('image.tmdb.org')) {
-    return getProxiedImageUrl(movie.backdrop_url);
+  const value = movie?.backdrop_url;
+  if (!value) return null;
+
+  if (/^https?:\/\/[^/]+\/proxy\/image\//i.test(value) || /^\/proxy\/image\//i.test(value)) {
+    return getProxiedImageUrl(value);
   }
-  
-  return movie.backdrop_url;
+  if (/^https?:\/\//i.test(value) && !/image\.tmdb\.org/i.test(value)) {
+    return value;
+  }
+
+  if (/image\.tmdb\.org/i.test(value) || /^\/?t\/p\//.test(value) || /^\/?w\d+\//.test(value)) {
+    return getProxiedImageUrl(value.startsWith('/') ? value : value);
+  }
+
+  const path = `${size}/${value.replace(/^\//, '')}`;
+  return getProxiedImageUrl(path);
 };
 
 /**

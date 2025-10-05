@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../context/AuthContext';
 import { getMovies, createRating } from '../services/api';
 import api from '../services/api';
+import { getPosterUrl } from '../utils/imageUtils';
 
 const GENRES = [
   'Action', 'Adventure', 'Animation', 'Comedy', 'Crime',
@@ -464,9 +465,9 @@ const RatingStep = ({ movies, movieRatings, onRate, onSkip, loading }) => {
                 isRated ? 'ring-2 ring-primary/20' : ''
               }`}
             >
-              {movie.poster_url && (
+              {getPosterUrl(movie) && (
                 <img
-                  src={movie.poster_url}
+                  src={getPosterUrl(movie)}
                   alt={movie.title}
                   className="w-20 h-28 object-cover rounded-lg"
                 />

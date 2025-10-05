@@ -7,6 +7,7 @@ import { Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getTopRated } from '../services/api';
 import { cn } from '@/lib/utils';
+import { getPosterUrl } from '../utils/imageUtils';
 
 // Fallback movies with cinematic imagery
 const FALLBACK_MOVIES = [
@@ -113,7 +114,7 @@ const MovieSlideshow = ({ autoPlayInterval = 4000 }) => {
             {/* Image */}
             <div className="relative w-full h-full">
               <img
-                src={movies[currentIndex].poster_url}
+                src={getPosterUrl(movies[currentIndex])}
                 alt={movies[currentIndex].title}
                 className="w-full h-full object-cover"
               />

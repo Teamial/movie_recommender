@@ -1,7 +1,17 @@
 import axios from 'axios';
 
+// Normalize API base URL for different deploy targets
+const resolveBaseURL = () => {
+  const raw = import.meta.env.VITE_API_BASE_URL;
+  if (!raw || raw === '') return '/api';
+  // Absolute URL (http/https)
+  if (/^https?:\/\//i.test(raw)) return raw;
+  // Ensure leading slash for same-origin paths
+  return raw.startsWith('/') ? raw : `/${raw}`;
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: resolveBaseURL(),
 });
 
 // Add token to requests if available
