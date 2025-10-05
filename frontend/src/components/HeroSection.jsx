@@ -118,8 +118,8 @@ const MovieSlideshow = ({ autoPlayInterval = 4000 }) => {
                 className="w-full h-full object-cover"
               />
               
-              {/* Gradient Overlay - Clod themed */}
-              <div className="absolute inset-0 bg-gradient-to-t from-foreground/90 via-foreground/40 to-transparent" />
+              {/* Gradient Overlay - matches theme background for dark mode support */}
+              <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
               
               {/* Content */}
               <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
@@ -128,13 +128,13 @@ const MovieSlideshow = ({ autoPlayInterval = 4000 }) => {
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.3, duration: 0.6 }}
                 >
-                  <p className="text-xs md:text-sm text-background/80 mb-2 font-medium tracking-wide">
+                  <p className="text-xs md:text-sm text-foreground/80 mb-2 font-medium tracking-wide">
                     {movies[currentIndex].vote_average ? `★ ${movies[currentIndex].vote_average.toFixed(1)}` : 'Featured'}
                   </p>
-                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-background mb-2 tracking-tight">
+                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-foreground mb-2 tracking-tight">
                     {movies[currentIndex].title}
                   </h2>
-                  <p className="text-sm md:text-base text-background/90 font-medium">
+                  <p className="text-sm md:text-base text-foreground/90 font-medium">
                     {movies[currentIndex].release_date ? new Date(movies[currentIndex].release_date).getFullYear() : '2024'}
                   </p>
                 </motion.div>
