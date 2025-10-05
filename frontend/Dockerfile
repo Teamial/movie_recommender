@@ -21,6 +21,10 @@ COPY components.json ./
 COPY jsconfig.json ./
 COPY eslint.config.js ./
 
+# Debug: Check if utils.js exists
+RUN ls -la /app/src/lib/ || echo "lib directory not found"
+RUN find /app -name "utils*" || echo "utils files not found"
+
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
