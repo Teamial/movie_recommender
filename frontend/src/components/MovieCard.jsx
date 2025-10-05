@@ -46,6 +46,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
   }, [user, movie.id]);
 
   const handleFavorite = async (e) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!user) return;
     
@@ -64,6 +65,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
   };
 
   const handleWatchlist = async (e) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!user) return;
     
@@ -82,6 +84,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
   };
 
   const handleRating = async (rating, e) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!user) return;
     
@@ -95,6 +98,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
   };
 
   const handleThumbsUp = async (e) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!user) return;
     
@@ -109,6 +113,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
   };
 
   const handleThumbsDown = async (e) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!user) return;
     

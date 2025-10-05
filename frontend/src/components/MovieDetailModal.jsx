@@ -519,23 +519,6 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                   </Button>
                                 )}
                                 <Button
-                                  onClick={handleWatchlist}
-                                  variant="outline"
-                                  size="lg"
-                                  className="rounded-xl backdrop-blur-xl transition-all hover:scale-105"
-                                  style={{
-                                    backgroundColor: localWatchlist ? theme.accent : 'rgba(255, 255, 255, 0.15)',
-                                    borderColor: localWatchlist ? theme.accent : 'rgba(255, 255, 255, 0.3)',
-                                    color: localWatchlist ? theme.bg : 'white'
-                                  }}
-                                >
-                                  <Bookmark 
-                                    className={`w-5 h-5 mr-2 ${localWatchlist ? 'fill-current' : ''}`}
-                                    style={{ color: localWatchlist ? theme.bg : 'white' }}
-                                  />
-                                  {localWatchlist ? 'Saved' : 'Watchlist'}
-                                </Button>
-                                <Button
                                   onClick={handleFavorite}
                                   variant="outline"
                                   size="lg"
@@ -551,6 +534,23 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                     style={{ color: localFavorite ? theme.bg : 'white' }}
                                   />
                                   {localFavorite ? 'Liked' : 'Favorite'}
+                                </Button>
+                                <Button
+                                  onClick={handleWatchlist}
+                                  variant="outline"
+                                  size="lg"
+                                  className="rounded-xl backdrop-blur-xl transition-all hover:scale-105"
+                                  style={{
+                                    backgroundColor: localWatchlist ? theme.accent : 'rgba(255, 255, 255, 0.15)',
+                                    borderColor: localWatchlist ? theme.accent : 'rgba(255, 255, 255, 0.3)',
+                                    color: localWatchlist ? theme.bg : 'white'
+                                  }}
+                                >
+                                  <Bookmark 
+                                    className={`w-5 h-5 mr-2 ${localWatchlist ? 'fill-current' : ''}`}
+                                    style={{ color: localWatchlist ? theme.bg : 'white' }}
+                                  />
+                                  {localWatchlist ? 'Saved' : 'Watchlist'}
                                 </Button>
                               </motion.div>
                             )}

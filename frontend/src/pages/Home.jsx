@@ -89,7 +89,6 @@ const Home = () => {
   };
 
   const handleUpdate = () => {
-    fetchMovies();
     if (user) {
       fetchUserData();
     }

@@ -149,7 +149,6 @@ const Recommendations = () => {
 
   const handleUpdate = async () => {
     await fetchUserData();
-    await fetchRecommendations(false);
   };
 
   if (!user) {
