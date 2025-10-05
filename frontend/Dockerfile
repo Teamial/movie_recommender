@@ -21,6 +21,9 @@ COPY components.json ./
 COPY jsconfig.json ./
 COPY eslint.config.js ./
 
+# Ensure utils.js is copied explicitly
+COPY src/lib/utils.js ./src/lib/utils.js
+
 # Debug: Check if utils.js exists
 RUN ls -la /app/src/lib/ || echo "lib directory not found"
 RUN find /app -name "utils*" || echo "utils files not found"
