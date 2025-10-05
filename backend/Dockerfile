@@ -37,10 +37,13 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy backend code
 COPY backend /app/backend
 
+# Make startup script executable
+RUN chmod +x /app/backend/start.sh
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
 USER app
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/backend/start.sh"]
