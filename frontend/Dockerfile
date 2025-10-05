@@ -4,25 +4,22 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY frontend/package*.json ./
 
 # Install dependencies with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm ci --silent || npm install --no-audit --no-fund --silent
 
 # Copy source code (only frontend files)
-COPY src ./src
-COPY public ./public
-COPY index.html ./
-COPY vite.config.js ./
-COPY tailwind.config.js ./
-COPY postcss.config.js ./
-COPY components.json ./
-COPY jsconfig.json ./
-COPY eslint.config.js ./
-
-# Ensure utils.js is copied explicitly
-COPY src/lib/utils.js ./src/lib/utils.js
+COPY frontend/src ./src
+COPY frontend/public ./public
+COPY frontend/index.html ./
+COPY frontend/vite.config.js ./
+COPY frontend/tailwind.config.js ./
+COPY frontend/postcss.config.js ./
+COPY frontend/components.json ./
+COPY frontend/jsconfig.json ./
+COPY frontend/eslint.config.js ./
 
 # Debug: Check if utils.js exists
 RUN ls -la /app/src/lib/ || echo "lib directory not found"
@@ -39,7 +36,7 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
 EXPOSE 80
