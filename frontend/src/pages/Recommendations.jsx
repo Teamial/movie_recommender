@@ -4,7 +4,7 @@ import { Sparkles, RefreshCw, TrendingUp, Info, Filter, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import MovieCard from '../components/MovieCard';
 import { useAuth } from '../context/AuthContext';
-import { getFavorites, getWatchlist, getUserRatings, getGenres } from '../services/api';
+import { getFavorites, getWatchlist, getUserRatings, getGenres, getRecommendations, getThumbsMovies } from '../services/api';
 import { Button } from '@/components/ui/button';
 import api from '../services/api';
 
@@ -18,6 +18,7 @@ const Recommendations = () => {
   const [genres, setGenres] = useState([]);
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [thumbsMovieIds, setThumbsMovieIds] = useState(new Set());
   const { user } = useAuth();
 
   useEffect(() => {
@@ -28,12 +29,26 @@ const Recommendations = () => {
     }
   }, [user]);
 
-  const fetchRecommendations = async () => {
+  const fetchRecommendations = async (isRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get(`/movies/recommendations?user_id=${user.id}&limit=20`);
-      setRecommendations(response.data);
+      const response = await getRecommendations(user.id, 50);
+      
+      if (isRefresh) {
+        // Add new movies to existing list, avoiding duplicates and thumbs movies
+        setRecommendations(prevRecommendations => {
+          const existingIds = new Set(prevRecommendations.map(movie => movie.id));
+          const newMovies = response.data.filter(movie => 
+            !existingIds.has(movie.id) && !thumbsMovieIds.has(movie.id)
+          );
+          return [...prevRecommendations, ...newMovies];
+        });
+      } else {
+        // Filter out thumbs movies from initial load
+        const filteredMovies = response.data.filter(movie => !thumbsMovieIds.has(movie.id));
+        setRecommendations(filteredMovies);
+      }
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       setError('Unable to load recommendations');
@@ -44,10 +59,11 @@ const Recommendations = () => {
 
   const fetchUserData = async () => {
     try {
-      const [favResponse, watchResponse, ratingsResponse] = await Promise.all([
+      const [favResponse, watchResponse, ratingsResponse, thumbsResponse] = await Promise.all([
         getFavorites(),
         getWatchlist(),
-        getUserRatings(user.id)
+        getUserRatings(user.id),
+        getThumbsMovies()
       ]);
       
       const favIds = new Set(favResponse.data.map(fav => fav.movie_id));
@@ -56,10 +72,12 @@ const Recommendations = () => {
       ratingsResponse.data.forEach(r => {
         ratings[r.movie_id] = r.rating;
       });
+      const thumbsIds = new Set(thumbsResponse.data.thumbs_movie_ids);
       
       setFavoriteIds(favIds);
       setWatchlistIds(watchIds);
       setUserRatings(ratings);
+      setThumbsMovieIds(thumbsIds);
     } catch (error) {
       console.error('Error fetching user data:', error);
     }
@@ -86,21 +104,29 @@ const Recommendations = () => {
     setSelectedGenres([]);
   };
 
-  // Filter movies by selected genres
-  const filteredRecommendations = selectedGenres.length === 0
-    ? recommendations
-    : recommendations.filter(movie => {
-        const movieGenres = Array.isArray(movie.genres) 
-          ? movie.genres 
-          : (typeof movie.genres === 'string' ? JSON.parse(movie.genres) : []);
-        return selectedGenres.some(selectedGenre => 
-          movieGenres.includes(selectedGenre)
-        );
-      });
+  // Filter movies by selected genres and exclude thumbs up/down movies
+  const filteredRecommendations = recommendations.filter(movie => {
+    // Exclude movies that user has given thumbs up or down to
+    if (thumbsMovieIds.has(movie.id)) {
+      return false;
+    }
+    
+    // Apply genre filtering if genres are selected
+    if (selectedGenres.length > 0) {
+      const movieGenres = Array.isArray(movie.genres) 
+        ? movie.genres 
+        : (typeof movie.genres === 'string' ? JSON.parse(movie.genres) : []);
+      return selectedGenres.some(selectedGenre => 
+        movieGenres.includes(selectedGenre)
+      );
+    }
+    
+    return true;
+  });
 
   const handleUpdate = async () => {
     await fetchUserData();
-    await fetchRecommendations();
+    await fetchRecommendations(false);
   };
 
   if (!user) {
@@ -167,7 +193,7 @@ const Recommendations = () => {
                 )}
               </Button>
               <Button
-                onClick={fetchRecommendations}
+                onClick={() => fetchRecommendations(true)}
                 disabled={loading}
                 variant="outline"
                 className="rounded-xl"

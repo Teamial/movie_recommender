@@ -7,10 +7,10 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
-from database import get_db
-from models import User, PasswordResetToken
-from schemas import UserCreate, UserResponse, Token, UserUpdate, PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
-from auth import (
+from ..database import get_db
+from ..models import User, PasswordResetToken
+from ..schemas import UserCreate, UserResponse, Token, UserUpdate, PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
+from ..auth import (
     get_password_hash,
     verify_password,
     create_access_token,

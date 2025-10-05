@@ -1,7 +1,13 @@
 import { createContext, useState, useContext, useEffect } from 'react';
 import { login as loginApi, register as registerApi, getCurrentUser } from '../services/api';
 
-const AuthContext = createContext();
+const AuthContext = createContext({
+  user: null,
+  login: () => {},
+  register: () => {},
+  logout: () => {},
+  loading: true
+});
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

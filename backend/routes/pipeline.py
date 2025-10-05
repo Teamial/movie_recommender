@@ -8,9 +8,9 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
-from database import get_db
-from models import PipelineRun, User
-from auth import get_current_user
+from ..database import get_db
+from ..models import PipelineRun, User
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -166,7 +166,7 @@ async def trigger_pipeline_run(
 def run_pipeline_task(run_id: int, update_type: str):
     """Background task to run the pipeline"""
     from scheduler import get_scheduler
-    from database import SessionLocal
+    from ..database import SessionLocal
     import traceback
     
     db = SessionLocal()

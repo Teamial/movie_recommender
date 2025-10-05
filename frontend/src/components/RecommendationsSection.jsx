@@ -2,27 +2,40 @@ import { useState, useEffect } from 'react';
 import { Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import MovieCard from './MovieCard';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import { getFavorites, getWatchlist, getUserRatings, getGenres, getRecommendations, getThumbsMovies } from '../services/api';
 
 const RecommendationsSection = () => {
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [scrollPosition, setScrollPosition] = useState(0);
+  const [thumbsMovieIds, setThumbsMovieIds] = useState(new Set());
   const { user } = useAuth();
 
   useEffect(() => {
     if (user) {
+      fetchThumbsMovies();
       fetchRecommendations();
     }
   }, [user]);
+
+  const fetchThumbsMovies = async () => {
+    try {
+      const response = await getThumbsMovies();
+      setThumbsMovieIds(new Set(response.data.thumbs_movie_ids));
+    } catch (error) {
+      console.error('Error fetching thumbs movies:', error);
+    }
+  };
 
   const fetchRecommendations = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get(`/movies/recommendations?user_id=${user.id}`);
-      setRecommendations(response.data);
+      const response = await getRecommendations(user.id, 50);
+      // Filter out movies that user has given thumbs up or down to
+      const filteredMovies = response.data.filter(movie => !thumbsMovieIds.has(movie.id));
+      setRecommendations(filteredMovies);
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       setError('Unable to load recommendations');

@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from database import engine, Base
-from routes import movies, ratings, auth, user_features, pipeline, onboarding, analytics
+from .database import engine, Base
+from .routes import movies, ratings, auth, user_features, pipeline, onboarding, analytics
 import logging
 
 # Configure logging
@@ -42,7 +42,7 @@ app.include_router(analytics.router)
 async def startup_event():
     """Initialize scheduler when app starts"""
     try:
-        from scheduler import get_scheduler
+        from .scheduler import get_scheduler
         scheduler = get_scheduler()
         scheduler.start()
         logger.info("✅ Pipeline scheduler started")
@@ -54,7 +54,7 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown"""
     try:
-        from scheduler import get_scheduler
+        from .scheduler import get_scheduler
         scheduler = get_scheduler()
         scheduler.stop()
         logger.info("✅ Pipeline scheduler stopped")

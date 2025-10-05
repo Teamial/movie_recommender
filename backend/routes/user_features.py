@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List
-from database import get_db
-from models import User, Movie, Favorite, WatchlistItem, Review
-from schemas import (
+from ..database import get_db
+from ..models import User, Movie, Favorite, WatchlistItem, Review
+from ..schemas import (
     FavoriteCreate, FavoriteResponse,
     WatchlistCreate, WatchlistResponse,
     ReviewCreate, ReviewUpdate, ReviewResponse, ReviewWithUser
 )
-from auth import get_current_user
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/user", tags=["user features"])
 

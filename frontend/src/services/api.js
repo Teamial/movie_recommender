@@ -56,6 +56,16 @@ export const createRating = (data, userId) => api.post(`/ratings/?user_id=${user
 export const getUserRatings = (userId) => api.get(`/ratings/user/${userId}`);
 
 // Recommendations
-export const getRecommendations = (userId) => api.get(`/movies/recommendations?user_id=${userId}`);
+export const getRecommendations = (userId, limit = 30) => api.get(`/movies/recommendations?user_id=${userId}&limit=${limit}`);
+
+// Analytics tracking
+export const trackRecommendationClick = (userId, movieId) => api.post('/analytics/track/click', { user_id: userId, movie_id: movieId });
+export const trackRecommendationRating = (userId, movieId, rating) => api.post('/analytics/track/rating', { user_id: userId, movie_id: movieId, rating });
+export const trackRecommendationThumbsUp = (userId, movieId) => api.post('/analytics/track/thumbs-up', { user_id: userId, movie_id: movieId });
+export const trackRecommendationThumbsDown = (userId, movieId) => api.post('/analytics/track/thumbs-down', { user_id: userId, movie_id: movieId });
+export const getThumbsStatus = (movieId) => api.get(`/analytics/thumbs-status/${movieId}`);
+export const toggleThumbsUp = (movieId) => api.post(`/analytics/toggle-thumbs-up/${movieId}`);
+export const toggleThumbsDown = (movieId) => api.post(`/analytics/toggle-thumbs-down/${movieId}`);
+export const getThumbsMovies = () => api.get('/analytics/thumbs-movies');
 
 export default api;

@@ -7,10 +7,10 @@ from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 
-from database import get_db
-from auth import get_current_user
-from models import User
-from ml.recommender import MovieRecommender
+from ..database import get_db
+from ..auth import get_current_user
+from ..models import User
+from ..ml.recommender import MovieRecommender
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -27,6 +27,16 @@ class RecommendationRatingSchema(BaseModel):
     rating: float
 
 
+class RecommendationThumbsUpSchema(BaseModel):
+    user_id: int
+    movie_id: int
+
+
+class RecommendationThumbsDownSchema(BaseModel):
+    user_id: int
+    movie_id: int
+
+
 class PerformanceMetrics(BaseModel):
     algorithm: str
     total_recommendations: int
@@ -35,8 +45,12 @@ class PerformanceMetrics(BaseModel):
     avg_rating: Optional[float]
     total_favorites: int
     total_watchlist: int
+    total_thumbs_up: int
+    total_thumbs_down: int
     ctr: float
     rating_rate: float
+    thumbs_up_rate: float
+    thumbs_down_rate: float
 
 
 class AlgorithmPerformanceResponse(BaseModel):
@@ -135,6 +149,40 @@ async def track_watchlist(
     return {"status": "tracked", "action": "watchlist"}
 
 
+@router.post("/track/thumbs-up")
+async def track_thumbs_up(
+    data: RecommendationThumbsUpSchema,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Track when a user gives thumbs up to a recommended movie
+    """
+    def track():
+        recommender = MovieRecommender(db)
+        recommender.track_recommendation_thumbs_up(data.user_id, data.movie_id)
+    
+    background_tasks.add_task(track)
+    return {"status": "tracked", "action": "thumbs_up"}
+
+
+@router.post("/track/thumbs-down")
+async def track_thumbs_down(
+    data: RecommendationThumbsDownSchema,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Track when a user gives thumbs down to a recommended movie
+    """
+    def track():
+        recommender = MovieRecommender(db)
+        recommender.track_recommendation_thumbs_down(data.user_id, data.movie_id)
+    
+    background_tasks.add_task(track)
+    return {"status": "tracked", "action": "thumbs_down"}
+
+
 @router.get("/performance", response_model=AlgorithmPerformanceResponse)
 async def get_algorithm_performance(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
@@ -207,7 +255,7 @@ async def get_recommendation_stats(
     """
     Get overall recommendation statistics
     """
-    from models import RecommendationEvent
+    from ..models import RecommendationEvent
     from sqlalchemy import func
     from datetime import timedelta
     
@@ -248,7 +296,7 @@ async def get_top_performing_recommendations(
     """
     Get top performing movie recommendations (by click rate)
     """
-    from models import RecommendationEvent, Movie
+    from ..models import RecommendationEvent, Movie
     from sqlalchemy import func
     from datetime import timedelta
     
@@ -291,7 +339,7 @@ async def get_most_active_users(
     """
     Get most active users (by recommendation interactions)
     """
-    from models import RecommendationEvent, User as UserModel
+    from ..models import RecommendationEvent, User as UserModel
     from sqlalchemy import func, or_
     from datetime import timedelta
     
@@ -322,4 +370,190 @@ async def get_most_active_users(
         'ratings': row.ratings or 0,
         'engagement_rate': ((row.clicks or 0) / row.recommendations_received * 100) if row.recommendations_received > 0 else 0
     } for row in results]
+
+
+@router.get("/thumbs-status/{movie_id}")
+def get_thumbs_status(
+    movie_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get thumbs up/down status for a specific movie for the current user
+    """
+    from ..models import RecommendationEvent
+    
+    # Find the most recent thumbs up/down event for this user and movie
+    event = db.query(RecommendationEvent).filter(
+        RecommendationEvent.user_id == current_user.id,
+        RecommendationEvent.movie_id == movie_id,
+        (RecommendationEvent.thumbs_up == True) | (RecommendationEvent.thumbs_down == True)
+    ).order_by(RecommendationEvent.created_at.desc()).first()
+    
+    if event:
+        return {
+            "thumbs_up": event.thumbs_up,
+            "thumbs_down": event.thumbs_down,
+            "last_updated": event.thumbs_up_at if event.thumbs_up else event.thumbs_down_at
+        }
+    else:
+        return {
+            "thumbs_up": False,
+            "thumbs_down": False,
+            "last_updated": None
+        }
+
+
+@router.post("/toggle-thumbs-up/{movie_id}")
+def toggle_thumbs_up(
+    movie_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Toggle thumbs up for a specific movie for the current user
+    """
+    from ..models import RecommendationEvent
+    from datetime import datetime
+    
+    try:
+        # Find the most recent recommendation event for this user and movie
+        event = db.query(RecommendationEvent).filter(
+            RecommendationEvent.user_id == current_user.id,
+            RecommendationEvent.movie_id == movie_id
+        ).order_by(RecommendationEvent.created_at.desc()).first()
+        
+        if event:
+            if event.thumbs_up:
+                # Currently thumbs up, remove it
+                event.thumbs_up = False
+                event.thumbs_up_at = None
+                action = "removed"
+            else:
+                # Not thumbs up, add it and remove thumbs down if present
+                event.thumbs_up = True
+                event.thumbs_up_at = datetime.utcnow()
+                event.thumbs_down = False
+                event.thumbs_down_at = None
+                action = "added"
+            
+            db.commit()
+            
+            return {
+                "thumbs_up": event.thumbs_up,
+                "thumbs_down": event.thumbs_down,
+                "action": action
+            }
+        else:
+            # No recommendation event found, create a new one
+            new_event = RecommendationEvent(
+                user_id=current_user.id,
+                movie_id=movie_id,
+                algorithm="manual",
+                thumbs_up=True,
+                thumbs_up_at=datetime.utcnow()
+            )
+            db.add(new_event)
+            db.commit()
+            
+            return {
+                "thumbs_up": True,
+                "thumbs_down": False,
+                "action": "added"
+            }
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error toggling thumbs up: {str(e)}")
+
+
+@router.post("/toggle-thumbs-down/{movie_id}")
+def toggle_thumbs_down(
+    movie_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Toggle thumbs down for a specific movie for the current user
+    """
+    from ..models import RecommendationEvent
+    from datetime import datetime
+    
+    try:
+        # Find the most recent recommendation event for this user and movie
+        event = db.query(RecommendationEvent).filter(
+            RecommendationEvent.user_id == current_user.id,
+            RecommendationEvent.movie_id == movie_id
+        ).order_by(RecommendationEvent.created_at.desc()).first()
+        
+        if event:
+            if event.thumbs_down:
+                # Currently thumbs down, remove it
+                event.thumbs_down = False
+                event.thumbs_down_at = None
+                action = "removed"
+            else:
+                # Not thumbs down, add it and remove thumbs up if present
+                event.thumbs_down = True
+                event.thumbs_down_at = datetime.utcnow()
+                event.thumbs_up = False
+                event.thumbs_up_at = None
+                action = "added"
+            
+            db.commit()
+            
+            return {
+                "thumbs_up": event.thumbs_up,
+                "thumbs_down": event.thumbs_down,
+                "action": action
+            }
+        else:
+            # No recommendation event found, create a new one
+            new_event = RecommendationEvent(
+                user_id=current_user.id,
+                movie_id=movie_id,
+                algorithm="manual",
+                thumbs_down=True,
+                thumbs_down_at=datetime.utcnow()
+            )
+            db.add(new_event)
+            db.commit()
+            
+            return {
+                "thumbs_up": False,
+                "thumbs_down": True,
+                "action": "added"
+            }
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error toggling thumbs down: {str(e)}")
+
+
+@router.get("/thumbs-movies")
+def get_thumbs_movies(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all movie IDs that the current user has given thumbs up or down to
+    """
+    from ..models import RecommendationEvent
+    
+    try:
+        # Get all movies with thumbs up or down
+        events = db.query(RecommendationEvent.movie_id).filter(
+            RecommendationEvent.user_id == current_user.id,
+            (RecommendationEvent.thumbs_up == True) | (RecommendationEvent.thumbs_down == True)
+        ).all()
+        
+        thumbs_movie_ids = [event[0] for event in events]
+        
+        return {
+            "thumbs_movie_ids": thumbs_movie_ids,
+            "count": len(thumbs_movie_ids)
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching thumbs movies: {str(e)}")
 

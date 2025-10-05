@@ -1,7 +1,7 @@
 import { X, Star, Play, Clock, Calendar, Heart, Bookmark, TrendingUp, Eye, Tag, Sparkles } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { addToWatchlist, removeFromWatchlist, addFavorite, removeFavorite, createRating } from '../services/api';
+import { addToWatchlist, removeFromWatchlist, addFavorite, removeFavorite, createRating, getMovie } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -225,6 +225,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
       }
     }
   }, [movie?.backdrop_url]);
+
 
   if (!isOpen || !movie) return null;
 

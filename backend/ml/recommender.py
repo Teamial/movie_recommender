@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from models import Rating, Movie, User, Favorite, WatchlistItem
+from ..models import Rating, Movie, User, Favorite, WatchlistItem
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import TruncatedSVD
 from scipy.sparse import csr_matrix
@@ -40,6 +40,8 @@ class MovieRecommender:
     
     def _get_excluded_movie_ids(self, user_id: int):
         """Get set of movie IDs to exclude from recommendations"""
+        from ..models import RecommendationEvent
+        
         excluded_ids = set()
         
         # Exclude movies rated 2 stars or less
@@ -49,7 +51,178 @@ class MovieRecommender:
         ).all()
         excluded_ids.update([r[0] for r in low_ratings])
         
+        # Exclude movies that received thumbs down
+        thumbs_down_events = self.db.query(RecommendationEvent.movie_id).filter(
+            RecommendationEvent.user_id == user_id,
+            RecommendationEvent.thumbs_down == True
+        ).all()
+        excluded_ids.update([r[0] for r in thumbs_down_events])
+        
         return excluded_ids
+    
+    def _get_thumbs_up_movie_ids(self, user_id: int):
+        """Get movie IDs that received thumbs up from user"""
+        from ..models import RecommendationEvent
+        
+        thumbs_up_events = self.db.query(RecommendationEvent.movie_id).filter(
+            RecommendationEvent.user_id == user_id,
+            RecommendationEvent.thumbs_up == True
+        ).all()
+        
+        return [r[0] for r in thumbs_up_events]
+    
+    def _get_thumbs_down_movie_ids(self, user_id: int):
+        """Get movie IDs that received thumbs down from user"""
+        from ..models import RecommendationEvent
+        
+        thumbs_down_events = self.db.query(RecommendationEvent.movie_id).filter(
+            RecommendationEvent.user_id == user_id,
+            RecommendationEvent.thumbs_down == True
+        ).all()
+        
+        return [r[0] for r in thumbs_down_events]
+    
+    def _get_similar_movie_ids(self, movie_ids: list, similarity_threshold: float = 0.7) -> set:
+        """
+        Get movie IDs similar to the given movies based on genre overlap and ratings
+        
+        Args:
+            movie_ids: List of movie IDs to find similar movies for
+            similarity_threshold: Minimum similarity score (0-1)
+            
+        Returns:
+            Set of similar movie IDs
+        """
+        if not movie_ids:
+            return set()
+        
+        similar_ids = set()
+        
+        # Get the movies we're comparing against
+        reference_movies = self.db.query(Movie).filter(Movie.id.in_(movie_ids)).all()
+        if not reference_movies:
+            return set()
+        
+        # Extract genres from reference movies
+        reference_genres = set()
+        for movie in reference_movies:
+            if movie.genres:
+                try:
+                    genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                    reference_genres.update(genres)
+                except:
+                    pass
+        
+        if not reference_genres:
+            return set()
+        
+        # Find movies with similar genres
+        all_movies = self.db.query(Movie).filter(
+            Movie.id.notin_(movie_ids),  # Exclude the reference movies themselves
+            Movie.vote_count >= 50  # Only consider movies with sufficient ratings
+        ).all()
+        
+        for movie in all_movies:
+            if movie.genres:
+                try:
+                    genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                    movie_genres = set(genres)
+                    
+                    # Calculate genre overlap similarity
+                    if movie_genres:
+                        overlap = len(reference_genres.intersection(movie_genres))
+                        total_genres = len(reference_genres.union(movie_genres))
+                        similarity = overlap / total_genres if total_genres > 0 else 0
+                        
+                        # Also consider rating similarity for movies with similar ratings
+                        if movie.vote_average and any(ref.vote_average for ref in reference_movies):
+                            avg_ref_rating = sum(ref.vote_average for ref in reference_movies if ref.vote_average) / len([ref for ref in reference_movies if ref.vote_average])
+                            rating_diff = abs(movie.vote_average - avg_ref_rating)
+                            rating_similarity = max(0, 1 - (rating_diff / 5.0))  # Normalize to 0-1
+                            
+                            # Combine genre and rating similarity
+                            combined_similarity = (similarity * 0.7) + (rating_similarity * 0.3)
+                        else:
+                            combined_similarity = similarity
+                        
+                        if combined_similarity >= similarity_threshold:
+                            similar_ids.add(movie.id)
+                            
+                except:
+                    pass
+        
+        return similar_ids
+    
+    def _filter_similar_to_thumbs_down(self, movies: list, user_id: int) -> list:
+        """
+        Filter out movies similar to movies that received thumbs down
+        
+        Args:
+            movies: List of Movie objects
+            user_id: User ID
+            
+        Returns:
+            Filtered list of movies without those similar to thumbs down movies
+        """
+        thumbs_down_ids = self._get_thumbs_down_movie_ids(user_id)
+        
+        if not thumbs_down_ids:
+            return movies
+        
+        # Get movies similar to thumbs down movies
+        similar_to_thumbs_down = self._get_similar_movie_ids(thumbs_down_ids, similarity_threshold=0.6)
+        
+        if not similar_to_thumbs_down:
+            return movies
+        
+        # Filter out similar movies
+        filtered_movies = [movie for movie in movies if movie.id not in similar_to_thumbs_down]
+        
+        logger.info(f"Filtered out {len(movies) - len(filtered_movies)} movies similar to thumbs down movies")
+        
+        return filtered_movies
+    
+    def _boost_similar_to_thumbs_up(self, movies: list, user_id: int) -> list:
+        """
+        Boost movies similar to movies that received thumbs up
+        
+        Args:
+            movies: List of Movie objects
+            user_id: User ID
+            
+        Returns:
+            Reordered list with similar movies boosted
+        """
+        thumbs_up_ids = self._get_thumbs_up_movie_ids(user_id)
+        
+        if not thumbs_up_ids:
+            return movies
+        
+        # Get movies similar to thumbs up movies
+        similar_to_thumbs_up = self._get_similar_movie_ids(thumbs_up_ids, similarity_threshold=0.5)
+        
+        if not similar_to_thumbs_up:
+            return movies
+        
+        # Score movies based on similarity to thumbs up movies
+        movie_scores = []
+        for movie in movies:
+            score = 1.0  # Base score
+            
+            # Boost if similar to thumbs up movies
+            if movie.id in similar_to_thumbs_up:
+                score += 2.0  # Significant boost for similarity to thumbs up
+            
+            movie_scores.append((movie, score))
+        
+        # Sort by score (descending)
+        movie_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        boosted_movies = [movie for movie, _ in movie_scores]
+        
+        logger.info(f"Boosted {len(similar_to_thumbs_up)} movies similar to thumbs up movies")
+        
+        return boosted_movies
     
     def _filter_disliked_genres(self, movies: list, user_id: int) -> list:
         """
@@ -995,6 +1168,10 @@ class MovieRecommender:
             # Filter out disliked genres from onboarding
             recommendations = self._filter_disliked_genres(recommendations, user_id)
             
+            # Apply thumbs up/down filtering and boosting
+            recommendations = self._filter_similar_to_thumbs_down(recommendations, user_id)
+            recommendations = self._boost_similar_to_thumbs_up(recommendations, user_id)
+            
             return recommendations
         
         else:
@@ -1166,6 +1343,10 @@ class MovieRecommender:
             # Filter out disliked genres from onboarding (applies to ALL users)
             hybrid_recommendations = self._filter_disliked_genres(hybrid_recommendations, user_id)
             
+            # Apply thumbs up/down filtering and boosting
+            hybrid_recommendations = self._filter_similar_to_thumbs_down(hybrid_recommendations, user_id)
+            hybrid_recommendations = self._boost_similar_to_thumbs_up(hybrid_recommendations, user_id)
+            
             return hybrid_recommendations[:n_recommendations]
     
     def get_context_aware_recommendations(self, user_id: int, n_recommendations: int = 10):
@@ -1221,7 +1402,7 @@ class MovieRecommender:
         Returns:
             dict with update status and metrics
         """
-        from models import ModelUpdateLog, Rating
+        from ..models import ModelUpdateLog, Rating
         import time
         
         result = {
@@ -1312,7 +1493,7 @@ class MovieRecommender:
         Returns:
             dict with update status and metrics
         """
-        from models import ModelUpdateLog, Rating
+        from ..models import ModelUpdateLog, Rating
         import time
         
         result = {
@@ -1396,7 +1577,7 @@ class MovieRecommender:
         Returns:
             Recommendation event ID
         """
-        from models import RecommendationEvent
+        from ..models import RecommendationEvent
         
         try:
             event = RecommendationEvent(
@@ -1425,7 +1606,7 @@ class MovieRecommender:
             user_id: User who clicked
             movie_id: Movie that was clicked
         """
-        from models import RecommendationEvent
+        from ..models import RecommendationEvent
         from datetime import datetime
         
         try:
@@ -1457,7 +1638,7 @@ class MovieRecommender:
             movie_id: Movie that was rated
             rating: Rating value
         """
-        from models import RecommendationEvent
+        from ..models import RecommendationEvent
         from datetime import datetime
         
         try:
@@ -1497,7 +1678,7 @@ class MovieRecommender:
             action: Type of action (click, rate, favorite, watchlist)
             value: Optional value (e.g., rating value)
         """
-        from models import RecommendationEvent
+        from ..models import RecommendationEvent
         from datetime import datetime
         
         try:
@@ -1520,6 +1701,12 @@ class MovieRecommender:
                     event.added_to_favorites = True
                 elif action == 'watchlist':
                     event.added_to_watchlist = True
+                elif action == 'thumbs_up':
+                    event.thumbs_up = True
+                    event.thumbs_up_at = datetime.utcnow()
+                elif action == 'thumbs_down':
+                    event.thumbs_down = True
+                    event.thumbs_down_at = datetime.utcnow()
                 
                 self.db.commit()
                 
@@ -1527,6 +1714,68 @@ class MovieRecommender:
         
         except Exception as e:
             logging.error(f"Error tracking performance: {e}")
+            self.db.rollback()
+    
+    def track_recommendation_thumbs_up(self, user_id: int, movie_id: int):
+        """
+        Track when user gives thumbs up to a recommended movie
+        
+        Args:
+            user_id: User who gave thumbs up
+            movie_id: Movie that received thumbs up
+        """
+        from ..models import RecommendationEvent
+        from datetime import datetime
+        
+        try:
+            # Find the most recent recommendation event for this user-movie pair
+            event = self.db.query(RecommendationEvent)\
+                .filter(RecommendationEvent.user_id == user_id)\
+                .filter(RecommendationEvent.movie_id == movie_id)\
+                .filter(RecommendationEvent.thumbs_up == False)\
+                .order_by(RecommendationEvent.created_at.desc())\
+                .first()
+            
+            if event:
+                event.thumbs_up = True
+                event.thumbs_up_at = datetime.utcnow()
+                self.db.commit()
+                
+                logging.info(f"Tracked thumbs up: user={user_id}, movie={movie_id}, algo={event.algorithm}")
+        
+        except Exception as e:
+            logging.error(f"Error tracking thumbs up: {e}")
+            self.db.rollback()
+    
+    def track_recommendation_thumbs_down(self, user_id: int, movie_id: int):
+        """
+        Track when user gives thumbs down to a recommended movie
+        
+        Args:
+            user_id: User who gave thumbs down
+            movie_id: Movie that received thumbs down
+        """
+        from ..models import RecommendationEvent
+        from datetime import datetime
+        
+        try:
+            # Find the most recent recommendation event for this user-movie pair
+            event = self.db.query(RecommendationEvent)\
+                .filter(RecommendationEvent.user_id == user_id)\
+                .filter(RecommendationEvent.movie_id == movie_id)\
+                .filter(RecommendationEvent.thumbs_down == False)\
+                .order_by(RecommendationEvent.created_at.desc())\
+                .first()
+            
+            if event:
+                event.thumbs_down = True
+                event.thumbs_down_at = datetime.utcnow()
+                self.db.commit()
+                
+                logging.info(f"Tracked thumbs down: user={user_id}, movie={movie_id}, algo={event.algorithm}")
+        
+        except Exception as e:
+            logging.error(f"Error tracking thumbs down: {e}")
             self.db.rollback()
     
     def get_algorithm_performance(self, days: int = 30) -> dict:
@@ -1539,7 +1788,7 @@ class MovieRecommender:
         Returns:
             dict with metrics per algorithm
         """
-        from models import RecommendationEvent
+        from ..models import RecommendationEvent
         from datetime import datetime, timedelta
         from sqlalchemy import func
         
@@ -1554,7 +1803,9 @@ class MovieRecommender:
                 func.sum(func.cast(RecommendationEvent.rated, Integer)).label('total_ratings'),
                 func.avg(RecommendationEvent.rating_value).label('avg_rating_value'),
                 func.sum(func.cast(RecommendationEvent.added_to_favorites, Integer)).label('total_favorites'),
-                func.sum(func.cast(RecommendationEvent.added_to_watchlist, Integer)).label('total_watchlist')
+                func.sum(func.cast(RecommendationEvent.added_to_watchlist, Integer)).label('total_watchlist'),
+                func.sum(func.cast(RecommendationEvent.thumbs_up, Integer)).label('total_thumbs_up'),
+                func.sum(func.cast(RecommendationEvent.thumbs_down, Integer)).label('total_thumbs_down')
             ).filter(
                 RecommendationEvent.created_at >= cutoff_date
             ).group_by(
@@ -1576,8 +1827,12 @@ class MovieRecommender:
                     'avg_rating': float(row.avg_rating_value) if row.avg_rating_value else None,
                     'total_favorites': row.total_favorites or 0,
                     'total_watchlist': row.total_watchlist or 0,
+                    'total_thumbs_up': row.total_thumbs_up or 0,
+                    'total_thumbs_down': row.total_thumbs_down or 0,
                     'ctr': (clicks / total * 100) if total > 0 else 0,  # Click-through rate
-                    'rating_rate': (ratings / total * 100) if total > 0 else 0  # Rating conversion rate
+                    'rating_rate': (ratings / total * 100) if total > 0 else 0,  # Rating conversion rate
+                    'thumbs_up_rate': (row.total_thumbs_up / total * 100) if total > 0 else 0,  # Thumbs up rate
+                    'thumbs_down_rate': (row.total_thumbs_down / total * 100) if total > 0 else 0  # Thumbs down rate
                 }
             
             return performance
@@ -1596,7 +1851,7 @@ class MovieRecommender:
         Returns:
             list of update log dictionaries
         """
-        from models import ModelUpdateLog
+        from ..models import ModelUpdateLog
         
         try:
             logs = self.db.query(ModelUpdateLog)\

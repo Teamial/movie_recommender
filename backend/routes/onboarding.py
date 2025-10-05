@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List
-from database import get_db
-from models import User, Movie, Rating
-from schemas import OnboardingData, OnboardingResponse, Movie as MovieSchema
-from auth import get_current_user
+from ..database import get_db
+from ..models import User, Movie, Rating
+from ..schemas import OnboardingData, OnboardingResponse, Movie as MovieSchema
+from ..auth import get_current_user
 import json
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])

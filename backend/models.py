@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey, DateTime, JSON, Boolean, BigInteger
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from database import Base
+from .database import Base
 from pgvector.sqlalchemy import Vector
 
 class Movie(Base):
@@ -157,6 +157,10 @@ class RecommendationEvent(Base):
     rating_value = Column(Float, nullable=True)
     added_to_watchlist = Column(Boolean, default=False)
     added_to_favorites = Column(Boolean, default=False)
+    thumbs_up = Column(Boolean, default=False, index=True)
+    thumbs_up_at = Column(DateTime, nullable=True)
+    thumbs_down = Column(Boolean, default=False, index=True)
+    thumbs_down_at = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     

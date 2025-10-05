@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List
-from database import get_db
-from models import Rating as RatingModel, Movie as MovieModel, User as UserModel
-from schemas import RatingCreate, RatingResponse, RatingWithMovie
+from ..database import get_db
+from ..models import Rating as RatingModel, Movie as MovieModel, User as UserModel
+from ..schemas import RatingCreate, RatingResponse, RatingWithMovie
 
 router = APIRouter(prefix="/ratings", tags=["ratings"])
 
@@ -19,7 +19,7 @@ def create_rating(
     
     Also triggers incremental model update if threshold is reached.
     """
-    from ml.recommender import MovieRecommender
+    from ..ml.recommender import MovieRecommender
     
     # Check if movie exists
     movie = db.query(MovieModel).filter(MovieModel.id == rating.movie_id).first()
