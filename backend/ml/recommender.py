@@ -31,7 +31,7 @@ class MovieRecommender:
         
         # Matrix Factorization configuration
         self.svd_components = 20  # Number of latent factors
-        self.svd_min_ratings = 10  # Minimum ratings needed for SVD
+        self.svd_min_ratings = 5  # Minimum ratings needed for SVD (lowered from 10)
         self._svd_model = None  # Cached SVD model
         self._svd_user_factors = None  # Cached user factors
         self._svd_item_factors = None  # Cached item factors
@@ -266,14 +266,15 @@ class MovieRecommender:
                     # If no genres listed, include the movie
                     filtered_movies.append(movie)
             
-            if filtered_movies:
+            # Always return filtered list, even if empty
+            # The recommendation system will handle backfilling if needed
+            if len(movies) - len(filtered_movies) > 0:
                 logger.info(f"Filtered {len(movies) - len(filtered_movies)} movies with disliked genres: {disliked_genres}")
-                return filtered_movies
-            else:
-                # If filtering removes ALL movies, return original list
-                # (better to show some movies than none)
-                logger.warning(f"Genre filtering would remove all movies, returning unfiltered list")
-                return movies
+            
+            if not filtered_movies:
+                logger.warning(f"Genre filtering removed ALL {len(movies)} movies. User may need more diverse recommendations.")
+            
+            return filtered_movies
                 
         except Exception as e:
             logger.error(f"Error filtering disliked genres: {e}")
@@ -361,7 +362,10 @@ class MovieRecommender:
         return recommended_movies
     
     def get_content_based_recommendations(self, user_id: int, n_recommendations: int = 10):
-        """Content-based using genres from all user interactions"""
+        """Content-based using genres from all user interactions AND stated preferences"""
+        
+        # Get user for onboarding preferences
+        user = self.db.query(User).filter(User.id == user_id).first()
         
         # Get all user interactions
         user_ratings = self.db.query(Rating).filter(Rating.user_id == user_id).all()
@@ -386,27 +390,47 @@ class MovieRecommender:
             if not any(mid == w.movie_id for mid, _ in liked_movie_ids):
                 liked_movie_ids.append((w.movie_id, 0.5))
         
-        if not liked_movie_ids:
+        if not liked_movie_ids and not (user and user.genre_preferences):
             return self._get_popular_movies(n_recommendations, user_id)
         
-        # Get movies and count genres with weights
-        movie_ids = [mid for mid, _ in liked_movie_ids]
-        liked_movies = self.db.query(Movie).filter(Movie.id.in_(movie_ids)).all()
-        
+        # Get movies and count genres with weights (from actual ratings)
         genre_scores = defaultdict(float)
-        for movie in liked_movies:
-            weight = next(w for mid, w in liked_movie_ids if mid == movie.id)
-            if movie.genres:
-                try:
-                    import json
-                    genres = json.loads(movie.genres) if isinstance(movie.genres, str) else movie.genres
-                    for genre in genres:
-                        genre_scores[genre] += weight
-                except:
-                    pass
         
-        # Get top genres
-        top_genres = sorted(genre_scores.items(), key=lambda x: x[1], reverse=True)[:3]
+        if liked_movie_ids:
+            movie_ids = [mid for mid, _ in liked_movie_ids]
+            liked_movies = self.db.query(Movie).filter(Movie.id.in_(movie_ids)).all()
+            
+            # Use square root dampening on rating-based genres
+            import math
+            genre_counts = defaultdict(int)
+            for movie in liked_movies:
+                if movie.genres:
+                    try:
+                        import json
+                        genres = json.loads(movie.genres) if isinstance(movie.genres, str) else movie.genres
+                        for genre in genres:
+                            genre_counts[genre] += 1
+                    except:
+                        pass
+            
+            # Apply dampening
+            for genre, count in genre_counts.items():
+                genre_scores[genre] += math.sqrt(count) * 0.3  # Dampened weight
+        
+        # Add explicit genre preferences with STRONG weight
+        if user and user.genre_preferences:
+            try:
+                import json
+                prefs = user.genre_preferences if isinstance(user.genre_preferences, dict) else json.loads(user.genre_preferences)
+                for genre, score in prefs.items():
+                    if score > 0:
+                        # Positive preferences get strong boost
+                        genre_scores[genre] += score * 3.0  # Much stronger than rated movies
+            except:
+                pass
+        
+        # Get top genres (now includes stated preferences!)
+        top_genres = sorted(genre_scores.items(), key=lambda x: x[1], reverse=True)[:5]  # Increased from 3 to 5
         top_genre_names = [g[0] for g in top_genres]
         
         if not top_genre_names:
@@ -415,12 +439,22 @@ class MovieRecommender:
         # Get movies to exclude
         excluded_ids = self._get_excluded_movie_ids(user_id)
         
+        # Get disliked genres for early filtering
+        disliked_genres = set()
+        if user and user.genre_preferences:
+            try:
+                import json
+                prefs = user.genre_preferences if isinstance(user.genre_preferences, dict) else json.loads(user.genre_preferences)
+                disliked_genres = {genre for genre, score in prefs.items() if score < 0}
+            except:
+                pass
+        
         # Find similar movies
         all_movies = self.db.query(Movie).filter(Movie.vote_count >= 50).all()
         recommendations = []
         
         # Build complete set of movies to exclude (all rated, favorites, watchlist)
-        seen_movie_ids = set(movie_ids)
+        seen_movie_ids = set(movie_ids) if 'movie_ids' in locals() else set()
         # Add ALL rated movies (not just high-rated ones)
         all_rated_ids = [r.movie_id for r in user_ratings]
         seen_movie_ids.update(all_rated_ids)
@@ -431,6 +465,11 @@ class MovieRecommender:
                 try:
                     import json
                     genres = json.loads(movie.genres) if isinstance(movie.genres, str) else movie.genres
+                    
+                    # EARLY FILTER: Skip if movie contains disliked genres
+                    if disliked_genres and disliked_genres.intersection(set(genres)):
+                        continue
+                    
                     overlap = len(set(genres) & set(top_genre_names))
                     if overlap > 0:
                         # Score based on genre overlap and rating
@@ -444,25 +483,20 @@ class MovieRecommender:
         return [movie for movie, _ in recommendations[:n_recommendations]]
     
     def _get_popular_movies(self, n: int = 10, exclude_user_id: int = None):
-        """Fallback: return popular movies user hasn't seen"""
-        query = self.db.query(Movie).filter(Movie.vote_count >= 100)
+        """Fallback: return popular movies user hasn't seen (ultra-optimized)"""
+        # Ultra-simple query for maximum performance
+        query = self.db.query(Movie).filter(
+            Movie.vote_count >= 500,  # Higher threshold for better movies
+            Movie.vote_average >= 7.0  # Only very high-rated movies
+        )
         
         if exclude_user_id:
-            # Exclude movies user has already interacted with
-            user_ratings = self.db.query(Rating.movie_id).filter(Rating.user_id == exclude_user_id).all()
-            user_favorites = self.db.query(Favorite.movie_id).filter(Favorite.user_id == exclude_user_id).all()
-            user_watchlist = self.db.query(WatchlistItem.movie_id).filter(WatchlistItem.user_id == exclude_user_id).all()
-            
-            seen_ids = set([r[0] for r in user_ratings] + [f[0] for f in user_favorites] + [w[0] for w in user_watchlist])
-            
-            # Also exclude movies rated 2 stars or less
-            excluded_ids = self._get_excluded_movie_ids(exclude_user_id)
-            seen_ids.update(excluded_ids)
-            
+            # Get seen movie IDs more efficiently
+            seen_ids = self._get_excluded_movie_ids(exclude_user_id)
             if seen_ids:
                 query = query.filter(~Movie.id.in_(seen_ids))
         
-        return query.order_by(Movie.vote_average.desc()).limit(n).all()
+        return query.order_by(Movie.popularity.desc()).limit(n).all()
     
     def _is_cold_start_user(self, user_id: int) -> bool:
         """Check if user has insufficient data (cold start problem)"""
@@ -944,6 +978,31 @@ class MovieRecommender:
         if not movies:
             return self._get_popular_movies(n_recommendations, user_id)
         
+        # Filter out disliked genres early
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if user and user.genre_preferences:
+            try:
+                import json
+                prefs = user.genre_preferences if isinstance(user.genre_preferences, dict) else json.loads(user.genre_preferences)
+                disliked_genres = {genre for genre, score in prefs.items() if score < 0}
+                
+                if disliked_genres:
+                    filtered_movies = []
+                    for movie in movies:
+                        if movie.genres:
+                            try:
+                                genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                                # Skip if contains disliked genre
+                                if not disliked_genres.intersection(set(genres)):
+                                    filtered_movies.append(movie)
+                            except:
+                                filtered_movies.append(movie)
+                        else:
+                            filtered_movies.append(movie)
+                    movies = filtered_movies
+            except:
+                pass
+        
         # Sort movies by the score order
         movie_dict = {m.id: m for m in movies}
         return [movie_dict[mid] for mid in top_movie_ids if mid in movie_dict]
@@ -1161,9 +1220,13 @@ class MovieRecommender:
             
             # Apply context-aware adjustments for cold start users too
             if use_context and context and len(recommendations) > 0:
-                # Apply temporal filtering (helps even for cold start)
-                recommendations = self._apply_temporal_filtering(recommendations, context)
-                logger.info(f"Applied temporal filtering to cold start recommendations")
+                # Apply enhanced diversification (helps even for cold start)
+                recommendations = self._apply_enhanced_diversification(recommendations, user_id, context)
+                logger.info(f"Applied enhanced diversification to cold start recommendations")
+            
+            # Apply feedback-driven scoring (even for cold start users)
+            recommendations = self._apply_feedback_driven_scoring(recommendations, user_id)
+            logger.info(f"Applied feedback-driven scoring to cold start recommendations")
             
             # Filter out disliked genres from onboarding
             recommendations = self._filter_disliked_genres(recommendations, user_id)
@@ -1326,19 +1389,17 @@ class MovieRecommender:
             
             # Apply context-aware adjustments
             if use_context and context:
-                # Apply temporal filtering
-                hybrid_recommendations = self._apply_temporal_filtering(
-                    hybrid_recommendations, 
+                # Apply enhanced diversification (replaces temporal + diversity separately)
+                hybrid_recommendations = self._apply_enhanced_diversification(
+                    hybrid_recommendations,
+                    user_id,
                     context
                 )
-                logger.info(f"Applied temporal filtering for {context['temporal']['time_period']}")
-                
-                # Apply diversity boosting
-                hybrid_recommendations = self._apply_diversity_boost(
-                    hybrid_recommendations, 
-                    context
-                )
-                logger.info(f"Applied diversity boost (recent genres: {len(context['recent_genres'])})")
+                logger.info(f"Applied enhanced diversification with age, temporal, and genre preferences")
+            
+            # Apply feedback-driven scoring (heavily weights dislikes and star ratings)
+            hybrid_recommendations = self._apply_feedback_driven_scoring(hybrid_recommendations, user_id)
+            logger.info(f"Applied feedback-driven scoring with heavy dislike weighting")
             
             # Filter out disliked genres from onboarding (applies to ALL users)
             hybrid_recommendations = self._filter_disliked_genres(hybrid_recommendations, user_id)
@@ -1874,3 +1935,696 @@ class MovieRecommender:
         except Exception as e:
             logging.error(f"Error getting model update history: {e}")
             return []
+
+    # =============================================================================
+    # ENHANCED DIVERSIFICATION METHODS
+    # =============================================================================
+    
+    def _get_age_based_genre_preferences(self, age: int) -> dict:
+        """
+        Get genre preferences based on user age
+        Returns dict with genre weights for different age groups
+        """
+        age_genre_map = {
+            # Children (13-17)
+            'teen': {
+                'preferred': ['Animation', 'Adventure', 'Fantasy', 'Comedy', 'Family', 'Science Fiction'],
+                'moderate': ['Action', 'Mystery', 'Romance'],
+                'avoid': ['Horror', 'Thriller', 'War', 'Crime']
+            },
+            # Young Adults (18-29)
+            'young_adult': {
+                'preferred': ['Action', 'Comedy', 'Science Fiction', 'Romance', 'Adventure', 'Thriller'],
+                'moderate': ['Drama', 'Fantasy', 'Horror', 'Mystery'],
+                'avoid': ['Documentary', 'War']
+            },
+            # Adults (30-49)
+            'adult': {
+                'preferred': ['Drama', 'Thriller', 'Crime', 'Mystery', 'Comedy', 'Action'],
+                'moderate': ['Science Fiction', 'Romance', 'Adventure', 'Documentary'],
+                'avoid': ['Animation', 'Family']
+            },
+            # Mature Adults (50+)
+            'mature': {
+                'preferred': ['Drama', 'Documentary', 'History', 'Biography', 'Mystery', 'Crime'],
+                'moderate': ['Comedy', 'Romance', 'Thriller', 'War'],
+                'avoid': ['Horror', 'Animation', 'Fantasy']
+            }
+        }
+        
+        # Determine age group
+        if age < 18:
+            return age_genre_map['teen']
+        elif age < 30:
+            return age_genre_map['young_adult']
+        elif age < 50:
+            return age_genre_map['adult']
+        else:
+            return age_genre_map['mature']
+    
+    def _get_enhanced_temporal_preferences(self, hour: int, day_of_week: int, age: int = None) -> dict:
+        """
+        Enhanced temporal filtering that considers time, day, and optionally age
+        
+        Returns:
+            dict with genre preferences and runtime preferences
+        """
+        time_period = self._get_time_period(hour)
+        is_weekend = day_of_week >= 5
+        
+        # Base temporal preferences
+        temporal_prefs = {
+            'morning': {
+                'genres': ['Animation', 'Family', 'Comedy', 'Adventure', 'Documentary'],
+                'mood': 'light',
+                'runtime_pref': 'short',  # < 100 min
+                'intensity': 'low'
+            },
+            'afternoon': {
+                'genres': ['Action', 'Adventure', 'Comedy', 'Science Fiction', 'Fantasy'],
+                'mood': 'energetic',
+                'runtime_pref': 'medium',  # 90-120 min
+                'intensity': 'medium'
+            },
+            'evening': {
+                'genres': ['Drama', 'Thriller', 'Mystery', 'Crime', 'Romance'],
+                'mood': 'engaging',
+                'runtime_pref': 'medium',  # 100-130 min
+                'intensity': 'medium-high'
+            },
+            'night': {
+                'genres': ['Horror', 'Thriller', 'Mystery', 'Science Fiction', 'Drama'],
+                'mood': 'intense',
+                'runtime_pref': 'long',  # > 110 min
+                'intensity': 'high'
+            }
+        }
+        
+        prefs = temporal_prefs[time_period].copy()
+        
+        # Adjust for weekend vs weekday
+        if is_weekend:
+            prefs['runtime_pref'] = 'long'  # People have more time
+            prefs['genres'].extend(['Epic', 'Adventure', 'Fantasy'])
+        else:
+            # Weekday - prefer shorter, lighter content
+            if time_period in ['evening', 'night']:
+                prefs['genres'] = [g for g in prefs['genres'] if g not in ['Horror']]
+                prefs['genres'].extend(['Comedy', 'Documentary'])
+        
+        # Adjust for age if provided
+        if age:
+            age_prefs = self._get_age_based_genre_preferences(age)
+            # Boost preferred genres for age group
+            prefs['age_preferred'] = age_prefs['preferred']
+            prefs['age_avoid'] = age_prefs['avoid']
+        
+        return prefs
+    
+    def _get_thumbs_based_genre_preferences(self, user_id: int) -> dict:
+        """
+        Extract genre preferences from thumbs up/down interactions
+        
+        Returns:
+            dict: {
+                'liked_genres': set of genres from thumbs up movies,
+                'disliked_genres': set of genres from thumbs down movies,
+                'genre_scores': dict mapping genres to preference scores
+            }
+        """
+        from ..models import RecommendationEvent
+        
+        # Get thumbs up movies
+        thumbs_up_ids = self._get_thumbs_up_movie_ids(user_id)
+        thumbs_down_ids = self._get_thumbs_down_movie_ids(user_id)
+        
+        liked_genres = defaultdict(int)
+        disliked_genres = defaultdict(int)
+        
+        # Analyze thumbs up movies
+        if thumbs_up_ids:
+            thumbs_up_movies = self.db.query(Movie).filter(Movie.id.in_(thumbs_up_ids)).all()
+            for movie in thumbs_up_movies:
+                if movie.genres:
+                    try:
+                        genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                        for genre in genres:
+                            liked_genres[genre] += 1
+                    except:
+                        pass
+        
+        # Analyze thumbs down movies
+        if thumbs_down_ids:
+            thumbs_down_movies = self.db.query(Movie).filter(Movie.id.in_(thumbs_down_ids)).all()
+            for movie in thumbs_down_movies:
+                if movie.genres:
+                    try:
+                        genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                        for genre in genres:
+                            disliked_genres[genre] += 1
+                    except:
+                        pass
+        
+        # Calculate genre scores (liked - disliked)
+        all_genres = set(liked_genres.keys()) | set(disliked_genres.keys())
+        genre_scores = {}
+        for genre in all_genres:
+            score = liked_genres[genre] - disliked_genres[genre]
+            genre_scores[genre] = score
+        
+        return {
+            'liked_genres': set(g for g, count in liked_genres.items() if count > 0),
+            'disliked_genres': set(g for g, count in disliked_genres.items() if count > 0),
+            'genre_scores': genre_scores
+        }
+    
+    def _get_user_genre_preferences_combined(self, user_id: int) -> dict:
+        """
+        Combine genre preferences from multiple sources:
+        1. User's explicit genre_preferences (onboarding)
+        2. Thumbs up/down interactions
+        3. High-rated movies (4+ stars)
+        
+        Returns:
+            dict with comprehensive genre preferences
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        
+        combined_scores = defaultdict(float)
+        
+        # 1. Explicit preferences from onboarding (weight: 5.0 - INCREASED)
+        # These are user's stated preferences and should have strong influence
+        if user and user.genre_preferences:
+            for genre, score in user.genre_preferences.items():
+                combined_scores[genre] += score * 5.0
+        
+        # 2. Thumbs up/down preferences (weight: 3.0 - INCREASED)
+        thumbs_prefs = self._get_thumbs_based_genre_preferences(user_id)
+        for genre, score in thumbs_prefs['genre_scores'].items():
+            combined_scores[genre] += score * 3.0
+        
+        # 3. High-rated movies (weight: 0.5 - DECREASED and CAPPED)
+        # Use square root to reduce over-representation of dominant genres
+        high_ratings = self.db.query(Rating).filter(
+            Rating.user_id == user_id,
+            Rating.rating >= 4.0
+        ).all()
+        
+        if high_ratings:
+            movie_ids = [r.movie_id for r in high_ratings]
+            movies = self.db.query(Movie).filter(Movie.id.in_(movie_ids)).all()
+            
+            # Count genres first
+            genre_counts = defaultdict(int)
+            for movie in movies:
+                if movie.genres:
+                    try:
+                        genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                        for genre in genres:
+                            genre_counts[genre] += 1
+                    except:
+                        pass
+            
+            # Apply square root dampening to prevent over-representation
+            import math
+            for genre, count in genre_counts.items():
+                # Square root dampening: 26 movies → sqrt(26) ≈ 5.1
+                dampened_score = math.sqrt(count) * 0.5
+                combined_scores[genre] += dampened_score
+        
+        # Normalize scores
+        if combined_scores:
+            max_score = max(abs(s) for s in combined_scores.values())
+            if max_score > 0:
+                combined_scores = {g: s / max_score for g, s in combined_scores.items()}
+        
+        return {
+            'genre_scores': dict(combined_scores),
+            'preferred_genres': set(g for g, s in combined_scores.items() if s > 0.2),  # Lowered threshold
+            'disliked_genres': set(g for g, s in combined_scores.items() if s < -0.2)  # Lowered threshold
+        }
+    
+    def _apply_enhanced_diversification(self, movies: list, user_id: int, context: dict = None) -> list:
+        """
+        Enhanced diversification that combines:
+        1. Age-based preferences
+        2. Temporal preferences (time of day, weekend)
+        3. User genre preferences (onboarding + thumbs + ratings)
+        4. Genre diversity (prevent fatigue)
+        
+        Args:
+            movies: List of movie objects
+            user_id: User ID
+            context: Optional context dict from _get_contextual_features
+        
+        Returns:
+            Reordered list of movies with enhanced diversification
+        """
+        if not movies:
+            return movies
+        
+        user = self.db.query(User).filter(User.id == user_id).first()
+        
+        # Get context if not provided
+        if context is None:
+            context = self._get_contextual_features(user_id)
+        
+        # Get user's comprehensive genre preferences
+        user_genre_prefs = self._get_user_genre_preferences_combined(user_id)
+        
+        # Get temporal preferences
+        temporal_prefs = self._get_enhanced_temporal_preferences(
+            hour=context['temporal']['hour'],
+            day_of_week=context['temporal']['day_of_week'],
+            age=user.age if user else None
+        )
+        
+        # Get age-based preferences
+        age_prefs = None
+        if user and user.age:
+            age_prefs = self._get_age_based_genre_preferences(user.age)
+        
+        # Score each movie
+        movie_scores = []
+        for movie in movies:
+            score = 0.0
+            
+            if movie.genres:
+                try:
+                    genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                    movie_genre_set = set(genres)
+                    
+                    # 1. User genre preference score (weight: 4.0)
+                    for genre in movie_genre_set:
+                        if genre in user_genre_prefs['genre_scores']:
+                            score += user_genre_prefs['genre_scores'][genre] * 4.0
+                    
+                    # 2. Temporal relevance score (weight: 2.0)
+                    temporal_match = len(movie_genre_set & set(temporal_prefs['genres']))
+                    score += temporal_match * 2.0
+                    
+                    # 3. Age appropriateness score (weight: 1.5)
+                    if age_prefs:
+                        age_preferred_match = len(movie_genre_set & set(age_prefs['preferred']))
+                        age_avoid_match = len(movie_genre_set & set(age_prefs['avoid']))
+                        score += age_preferred_match * 1.5
+                        score -= age_avoid_match * 2.0  # Penalty for age-inappropriate
+                    
+                    # 4. Diversity bonus (weight: 1.5)
+                    if context['recent_genres']:
+                        new_genres = movie_genre_set - context['recent_genres']
+                        score += len(new_genres) * 1.5
+                        
+                        # Penalty for oversaturated genres
+                        for genre in movie_genre_set:
+                            if genre in context['genre_saturation']:
+                                saturation = context['genre_saturation'][genre]
+                                score -= saturation * 1.0
+                    
+                    # 5. Runtime appropriateness (weight: 0.5)
+                    if hasattr(movie, 'runtime') and movie.runtime:
+                        runtime_pref = temporal_prefs.get('runtime_pref', 'medium')
+                        if runtime_pref == 'short' and movie.runtime < 100:
+                            score += 0.5
+                        elif runtime_pref == 'medium' and 90 <= movie.runtime <= 130:
+                            score += 0.5
+                        elif runtime_pref == 'long' and movie.runtime > 110:
+                            score += 0.5
+                    
+                except Exception as e:
+                    logger.warning(f"Error scoring movie {movie.id}: {e}")
+            
+            movie_scores.append((movie, score))
+        
+        # Sort by score (descending)
+        movie_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        logger.info(f"Enhanced diversification applied: "
+                   f"age={user.age if user else 'N/A'}, "
+                   f"time={temporal_prefs.get('mood', 'N/A')}, "
+                   f"user_prefs={len(user_genre_prefs['preferred_genres'])} genres")
+        
+        return [movie for movie, _ in movie_scores]
+
+    # =============================================================================
+    # FEEDBACK-DRIVEN ALGORITHM ADJUSTMENT
+    # =============================================================================
+    
+    def _get_user_feedback_profile(self, user_id: int) -> dict:
+        """
+        Create comprehensive user feedback profile from all interactions
+        
+        Returns:
+            dict: {
+                'strong_likes': set of movie IDs with 4.5+ ratings or thumbs up,
+                'likes': set of movie IDs with 3.5-4.4 ratings,
+                'neutral': set of movie IDs with 2.5-3.4 ratings,
+                'dislikes': set of movie IDs with 1.5-2.4 ratings,
+                'strong_dislikes': set of movie IDs with <1.5 ratings or thumbs down,
+                'genre_preferences': dict with genre scores from all feedback,
+                'director_preferences': dict with director scores,
+                'actor_preferences': dict with actor scores,
+                'feedback_strength': float indicating how much feedback user has given
+            }
+        """
+        # Get all user interactions
+        ratings = self.db.query(Rating).filter(Rating.user_id == user_id).all()
+        thumbs_up_ids = set(self._get_thumbs_up_movie_ids(user_id))
+        thumbs_down_ids = set(self._get_thumbs_down_movie_ids(user_id))
+        
+        # Categorize by rating strength
+        strong_likes = set()
+        likes = set()
+        neutral = set()
+        dislikes = set()
+        strong_dislikes = set()
+        
+        for rating in ratings:
+            movie_id = rating.movie_id
+            rating_value = rating.rating
+            
+            if movie_id in thumbs_up_ids:
+                strong_likes.add(movie_id)
+            elif movie_id in thumbs_down_ids:
+                strong_dislikes.add(movie_id)
+            elif rating_value >= 4.5:
+                strong_likes.add(movie_id)
+            elif rating_value >= 3.5:
+                likes.add(movie_id)
+            elif rating_value >= 2.5:
+                neutral.add(movie_id)
+            elif rating_value >= 1.5:
+                dislikes.add(movie_id)
+            else:
+                strong_dislikes.add(movie_id)
+        
+        # Analyze preferences from feedback
+        genre_preferences = defaultdict(float)
+        director_preferences = defaultdict(float)
+        actor_preferences = defaultdict(float)
+        
+        # Get movie details for analysis
+        all_movie_ids = strong_likes | likes | neutral | dislikes | strong_dislikes
+        movies = self.db.query(Movie).filter(Movie.id.in_(all_movie_ids)).all()
+        
+        for movie in movies:
+            movie_id = movie.id
+            
+            # Determine preference weight
+            if movie_id in strong_likes:
+                weight = 3.0
+            elif movie_id in likes:
+                weight = 2.0
+            elif movie_id in neutral:
+                weight = 0.5
+            elif movie_id in dislikes:
+                weight = -1.5
+            elif movie_id in strong_dislikes:
+                weight = -3.0
+            else:
+                continue
+            
+            # Analyze genres
+            if movie.genres:
+                try:
+                    genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                    for genre in genres:
+                        genre_preferences[genre] += weight
+                except:
+                    pass
+            
+            # Analyze directors
+            if movie.crew:
+                try:
+                    crew = movie.crew if isinstance(movie.crew, list) else json.loads(movie.crew)
+                    for person in crew:
+                        if person.get('job') == 'Director':
+                            director_preferences[person.get('name')] += weight
+                except:
+                    pass
+            
+            # Analyze top actors
+            if movie.cast:
+                try:
+                    cast = movie.cast if isinstance(movie.cast, list) else json.loads(movie.cast)
+                    for actor in cast[:3]:  # Top 3 actors
+                        actor_preferences[actor.get('name')] += weight
+                except:
+                    pass
+        
+        # Calculate feedback strength (0-1, where 1 = lots of feedback)
+        total_interactions = len(ratings) + len(thumbs_up_ids) + len(thumbs_down_ids)
+        feedback_strength = min(total_interactions / 20.0, 1.0)  # Max at 20 interactions
+        
+        return {
+            'strong_likes': strong_likes,
+            'likes': likes,
+            'neutral': neutral,
+            'dislikes': dislikes,
+            'strong_dislikes': strong_dislikes,
+            'genre_preferences': dict(genre_preferences),
+            'director_preferences': dict(director_preferences),
+            'actor_preferences': dict(actor_preferences),
+            'feedback_strength': feedback_strength
+        }
+    
+    def _get_dynamic_algorithm_weights(self, user_id: int) -> dict:
+        """
+        Dynamically adjust algorithm weights based on user feedback patterns
+        
+        Returns:
+            dict: Algorithm weights that adapt to user preferences
+        """
+        feedback_profile = self._get_user_feedback_profile(user_id)
+        feedback_strength = feedback_profile['feedback_strength']
+        
+        # Base weights
+        base_weights = {
+            'svd': 0.4,
+            'item_cf': 0.3,
+            'content': 0.2,
+            'embedding': 0.1
+        }
+        
+        # Adjust based on feedback patterns
+        if feedback_strength < 0.3:
+            # Low feedback - rely more on content and demographics
+            base_weights['content'] += 0.2
+            base_weights['svd'] -= 0.1
+            base_weights['item_cf'] -= 0.1
+        elif feedback_strength > 0.7:
+            # High feedback - rely more on collaborative filtering
+            base_weights['svd'] += 0.15
+            base_weights['item_cf'] += 0.1
+            base_weights['content'] -= 0.15
+            base_weights['embedding'] -= 0.1
+        
+        # Adjust based on rating patterns
+        strong_likes_count = len(feedback_profile['strong_likes'])
+        strong_dislikes_count = len(feedback_profile['strong_dislikes'])
+        
+        if strong_dislikes_count > strong_likes_count:
+            # User has strong dislikes - increase content filtering
+            base_weights['content'] += 0.1
+            base_weights['svd'] -= 0.05
+            base_weights['item_cf'] -= 0.05
+        
+        # Normalize weights
+        total_weight = sum(base_weights.values())
+        normalized_weights = {k: v / total_weight for k, v in base_weights.items()}
+        
+        logger.info(f"Dynamic algorithm weights for user {user_id}: {normalized_weights}")
+        
+        return normalized_weights
+    
+    def _apply_feedback_driven_scoring(self, movies: list, user_id: int) -> list:
+        """
+        Apply sophisticated feedback-driven scoring that heavily weights dislikes
+        
+        Args:
+            movies: List of Movie objects
+            user_id: User ID
+            
+        Returns:
+            Reordered list with feedback-driven scoring
+        """
+        if not movies:
+            return movies
+        
+        feedback_profile = self._get_user_feedback_profile(user_id)
+        
+        # Pre-calculate similarity sets to avoid repeated expensive calculations
+        thumbs_down_ids = self._get_thumbs_down_movie_ids(user_id)
+        thumbs_up_ids = self._get_thumbs_up_movie_ids(user_id)
+        high_rated_movies = feedback_profile['strong_likes'] | feedback_profile['likes']
+        
+        # Cache similarity results
+        similar_to_disliked = set()
+        similar_to_liked = set()
+        similar_to_high_rated = set()
+        
+        if thumbs_down_ids:
+            similar_to_disliked = self._get_similar_movie_ids(thumbs_down_ids, similarity_threshold=0.4)
+        if thumbs_up_ids:
+            similar_to_liked = self._get_similar_movie_ids(thumbs_up_ids, similarity_threshold=0.3)
+        if high_rated_movies:
+            similar_to_high_rated = self._get_similar_movie_ids(list(high_rated_movies), similarity_threshold=0.3)
+        
+        movie_scores = []
+        for movie in movies:
+            score = 0.0
+            
+            # 1. Genre preferences (weight: 5.0 - highest priority)
+            if movie.genres:
+                try:
+                    genres = movie.genres if isinstance(movie.genres, list) else json.loads(movie.genres)
+                    genre_score = 0.0
+                    for genre in genres:
+                        if genre in feedback_profile['genre_preferences']:
+                            genre_score += feedback_profile['genre_preferences'][genre]
+                    score += genre_score * 5.0
+                except:
+                    pass
+            
+            # 2. Director preferences (weight: 3.0)
+            if movie.crew:
+                try:
+                    crew = movie.crew if isinstance(movie.crew, list) else json.loads(movie.crew)
+                    for person in crew:
+                        if person.get('job') == 'Director' and person.get('name') in feedback_profile['director_preferences']:
+                            score += feedback_profile['director_preferences'][person.get('name')] * 3.0
+                except:
+                    pass
+            
+            # 3. Actor preferences (weight: 2.0)
+            if movie.cast:
+                try:
+                    cast = movie.cast if isinstance(movie.cast, list) else json.loads(movie.cast)
+                    actor_score = 0.0
+                    for actor in cast[:3]:  # Top 3 actors
+                        if actor.get('name') in feedback_profile['actor_preferences']:
+                            actor_score += feedback_profile['actor_preferences'][actor.get('name')]
+                    score += actor_score * 2.0
+                except:
+                    pass
+            
+            # 4. Similarity to strongly disliked movies (heavy penalty) - use cached result
+            if movie.id in similar_to_disliked:
+                score -= 10.0  # Heavy penalty for similarity to disliked movies
+            
+            # 5. Similarity to strongly liked movies (boost) - use cached result
+            if movie.id in similar_to_liked:
+                score += 8.0  # Strong boost for similarity to liked movies
+            
+            # 6. Rating-based similarity - use cached result
+            if movie.id in similar_to_high_rated:
+                score += 6.0
+            
+            movie_scores.append((movie, score))
+        
+        # Sort by score (descending)
+        movie_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        logger.info(f"Applied feedback-driven scoring: "
+                   f"strong_likes={len(feedback_profile['strong_likes'])}, "
+                   f"strong_dislikes={len(feedback_profile['strong_dislikes'])}, "
+                   f"feedback_strength={feedback_profile['feedback_strength']:.2f}")
+        
+        return [movie for movie, _ in movie_scores]
+    
+    def _get_adaptive_recommendation_strategy(self, user_id: int) -> str:
+        """
+        Determine the best recommendation strategy based on user feedback patterns
+        
+        Returns:
+            str: Strategy name ('conservative', 'balanced', 'exploratory', 'preference_focused')
+        """
+        feedback_profile = self._get_user_feedback_profile(user_id)
+        
+        strong_likes_count = len(feedback_profile['strong_likes'])
+        strong_dislikes_count = len(feedback_profile['strong_dislikes'])
+        feedback_strength = feedback_profile['feedback_strength']
+        
+        # Determine strategy based on patterns
+        if feedback_strength < 0.2:
+            return 'exploratory'  # Not enough feedback, explore broadly
+        elif strong_dislikes_count > strong_likes_count * 1.5:
+            return 'conservative'  # User has strong dislikes, be conservative
+        elif strong_likes_count > strong_dislikes_count * 2:
+            return 'preference_focused'  # User has clear preferences, focus on them
+        else:
+            return 'balanced'  # Balanced approach
+    
+    def get_feedback_driven_recommendations(self, user_id: int, n_recommendations: int = 10) -> list:
+        """
+        Get recommendations using feedback-driven approach that heavily weights dislikes
+        
+        Args:
+            user_id: User ID
+            n_recommendations: Number of recommendations
+            
+        Returns:
+            List of recommended movies
+        """
+        # Get adaptive strategy
+        strategy = self._get_adaptive_recommendation_strategy(user_id)
+        
+        # Get dynamic algorithm weights
+        algorithm_weights = self._get_dynamic_algorithm_weights(user_id)
+        
+        # Generate recommendations using weighted algorithms
+        all_recommendations = []
+        seen_ids = set()
+        
+        # SVD recommendations
+        if algorithm_weights['svd'] > 0:
+            svd_count = int(n_recommendations * algorithm_weights['svd'])
+            svd_recs = self.get_svd_recommendations(user_id, svd_count)
+            for movie in svd_recs:
+                if movie.id not in seen_ids:
+                    all_recommendations.append(movie)
+                    seen_ids.add(movie.id)
+        
+        # Item-based CF recommendations
+        if algorithm_weights['item_cf'] > 0:
+            item_count = int(n_recommendations * algorithm_weights['item_cf'])
+            item_recs = self.get_item_based_recommendations(user_id, item_count)
+            for movie in item_recs:
+                if movie.id not in seen_ids:
+                    all_recommendations.append(movie)
+                    seen_ids.add(movie.id)
+        
+        # Content-based recommendations
+        if algorithm_weights['content'] > 0:
+            content_count = int(n_recommendations * algorithm_weights['content'])
+            content_recs = self.get_content_based_recommendations(user_id, content_count)
+            for movie in content_recs:
+                if movie.id not in seen_ids:
+                    all_recommendations.append(movie)
+                    seen_ids.add(movie.id)
+        
+        # If we don't have enough recommendations, get more from popular movies
+        if len(all_recommendations) < n_recommendations:
+            logger.info(f"Only got {len(all_recommendations)} recommendations, fetching popular movies to reach {n_recommendations}")
+            # Fetch even fewer popular movies for better performance
+            popular_count = min(n_recommendations - len(all_recommendations) + 5, 20)
+            popular_movies = self._get_popular_movies(popular_count, user_id)
+            for movie in popular_movies:
+                if movie.id not in seen_ids and len(all_recommendations) < n_recommendations + 10:
+                    all_recommendations.append(movie)
+                    seen_ids.add(movie.id)
+        
+        # Apply feedback-driven scoring
+        scored_recommendations = self._apply_feedback_driven_scoring(all_recommendations, user_id)
+        
+        # Filter out disliked genres (CRITICAL: was missing!)
+        scored_recommendations = self._filter_disliked_genres(scored_recommendations, user_id)
+        
+        # Apply thumbs up/down filtering
+        scored_recommendations = self._filter_similar_to_thumbs_down(scored_recommendations, user_id)
+        scored_recommendations = self._boost_similar_to_thumbs_up(scored_recommendations, user_id)
+        
+        logger.info(f"Feedback-driven recommendations: strategy={strategy}, "
+                   f"weights={algorithm_weights}, count={len(scored_recommendations)}")
+        
+        return scored_recommendations[:n_recommendations]

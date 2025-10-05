@@ -55,7 +55,7 @@ export const deleteReview = (reviewId) => api.delete(`/user/reviews/${reviewId}`
 export const createRating = (data, userId) => api.post(`/ratings/?user_id=${userId}`, data);
 export const getUserRatings = (userId) => api.get(`/ratings/user/${userId}`);
 
-// Recommendations
+// Recommendations - Unified endpoint (no modes needed!)
 export const getRecommendations = (userId, limit = 30) => api.get(`/movies/recommendations?user_id=${userId}&limit=${limit}`);
 
 // Analytics tracking

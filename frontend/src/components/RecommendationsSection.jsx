@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import MovieCard from './MovieCard';
 import { useAuth } from '../context/AuthContext';
-import { getFavorites, getWatchlist, getUserRatings, getGenres, getRecommendations, getThumbsMovies } from '../services/api';
+import { getRecommendations, getThumbsMovies } from '../services/api';
 
 const RecommendationsSection = () => {
   const [recommendations, setRecommendations] = useState([]);
@@ -32,7 +32,7 @@ const RecommendationsSection = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await getRecommendations(user.id, 50);
+      const response = await getRecommendations(user.id, 30);
       // Filter out movies that user has given thumbs up or down to
       const filteredMovies = response.data.filter(movie => !thumbsMovieIds.has(movie.id));
       setRecommendations(filteredMovies);

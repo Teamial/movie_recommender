@@ -33,7 +33,17 @@ const Recommendations = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await getRecommendations(user.id, 50);
+      
+      console.log(`Fetching recommendations: isRefresh=${isRefresh}`);
+      
+      // Unified endpoint - always returns 30 great movies!
+      const limit = isRefresh ? 10 : 30;
+      
+      const startTime = Date.now();
+      const response = await getRecommendations(user.id, limit);
+      const endTime = Date.now();
+      
+      console.log(`Recommendations fetched in ${endTime - startTime}ms, got ${response.data.length} movies`);
       
       if (isRefresh) {
         // Add new movies to existing list, avoiding duplicates and thumbs movies
@@ -42,6 +52,7 @@ const Recommendations = () => {
           const newMovies = response.data.filter(movie => 
             !existingIds.has(movie.id) && !thumbsMovieIds.has(movie.id)
           );
+          console.log(`Adding ${newMovies.length} new movies to existing ${prevRecommendations.length}`);
           return [...prevRecommendations, ...newMovies];
         });
       } else {
@@ -171,7 +182,7 @@ const Recommendations = () => {
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 asChild
                 variant="outline"
@@ -223,6 +234,17 @@ const Recommendations = () => {
               <p className="text-3xl font-bold text-foreground">{favoriteIds.size + Object.keys(userRatings).length}</p>
             </div>
           </div>
+
+          {/* Smart Recommendations Info
+          <div className="bg-card rounded-xl p-5 border border-border shadow-sm mb-6">
+            <div className="flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-primary mt-0.5" />
+              <div className="text-sm text-muted-foreground">
+                <strong className="text-foreground">🎯 Smart Recommendations:</strong> Personalized picks that automatically filter out genres you dislike (like Horror), 
+                balance your preferences with your ratings, and provide diverse suggestions across multiple genres you'll love.
+              </div>
+            </div>
+          </div> */}
 
           {/* Genre Filter Panel */}
           <AnimatePresence>

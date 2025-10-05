@@ -65,19 +65,20 @@ def get_movies(
 def get_recommendations(
     user_id: int = Query(...),
     limit: int = Query(30, ge=1, le=50),
-    use_context: bool = Query(True, description="Enable context-aware recommendations"),
-    use_embeddings: bool = Query(False, description="Enable embedding-based recommendations (requires deep learning libs)"),
-    use_graph: bool = Query(False, description="Enable graph-based recommendations (requires graph libs)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Get personalized movie recommendations for a user
     
-    Context-aware features:
-    - Temporal filtering: Adjusts recommendations based on time of day and day of week
-    - Diversity boosting: Prevents genre saturation by recommending varied content
-    - Sequential patterns: Considers recent viewing history
+    Unified recommendation algorithm that automatically:
+    - Filters out disliked genres (like Horror if you marked it)
+    - Balances your stated preferences with your ratings
+    - Provides diverse recommendations across genres
+    - Considers your recent viewing patterns
+    - Returns plenty of great movies you'll love
+    
+    No modes or configuration needed - just works!
     """
     
     # Verify the user is requesting their own recommendations
@@ -85,29 +86,24 @@ def get_recommendations(
         raise HTTPException(status_code=403, detail="Not authorized to view these recommendations")
     
     recommender = MovieRecommender(db)
+    
+    # Use simplified hybrid approach - no aggressive context filtering
     recommendations = recommender.get_hybrid_recommendations(
         user_id, 
         limit, 
-        use_context=use_context,
-        use_embeddings=use_embeddings,
-        use_graph=use_graph
+        use_context=False,  # Disable aggressive temporal/diversity filtering
+        use_embeddings=False,
+        use_graph=False
     )
     
-    # Track recommendations for A/B testing
+    # Track recommendations for analytics
     try:
-        context = recommender._get_contextual_features(user_id) if use_context else None
-        context_data = {
-            'time_period': context['temporal']['time_period'],
-            'is_weekend': context['temporal']['is_weekend']
-        } if context else None
-        
         for position, movie in enumerate(recommendations, start=1):
             recommender.track_recommendation(
                 user_id=user_id,
                 movie_id=movie.id,
-                algorithm='hybrid',
-                position=position,
-                context=context_data
+                algorithm='unified',
+                position=position
             )
     except Exception as e:
         # Don't fail the request if tracking fails
@@ -116,31 +112,8 @@ def get_recommendations(
     
     return recommendations
 
-@router.get("/recommendations/context")
-def get_context_aware_recommendations(
-    user_id: int = Query(...),
-    limit: int = Query(10, ge=1, le=50),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get context-aware recommendations with detailed context information
-    
-    Returns recommendations along with the context used to generate them:
-    - Time period (morning, afternoon, evening, night)
-    - Weekend status
-    - Recent genres watched
-    - Genre saturation levels
-    """
-    
-    # Verify the user is requesting their own recommendations
-    if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to view these recommendations")
-    
-    recommender = MovieRecommender(db)
-    result = recommender.get_context_aware_recommendations(user_id, limit)
-    
-    return result
+# REMOVED: Old context-aware and feedback-driven endpoints
+# Everything is now unified in the main /recommendations endpoint
 
 @router.get("/top-rated", response_model=List[Movie])
 def get_top_rated(
