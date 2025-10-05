@@ -4,15 +4,15 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 # Copy package files
-COPY frontend/package*.json ./
+COPY package*.json ./
 
 # Install dependencies with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm ci --silent || npm install --no-audit --no-fund --silent
 
 # Copy source code (only essential files)
-COPY frontend/src ./src
-COPY frontend/public ./public
+COPY src ./src
+COPY public ./public
 
 # Create index.html inline
 RUN echo '<!doctype html>' > index.html && \
