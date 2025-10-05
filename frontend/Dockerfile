@@ -15,7 +15,30 @@ COPY frontend/src ./src
 COPY frontend/public ./public
 COPY frontend/index.html ./
 COPY frontend/vite.config.js ./
-COPY frontend/tailwind.config.js ./
+
+# Create minimal tailwind config inline
+RUN echo '/** @type {import("tailwindcss").Config} */' > tailwind.config.js && \
+    echo 'export default {' >> tailwind.config.js && \
+    echo '  darkMode: ["class"],' >> tailwind.config.js && \
+    echo '  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],' >> tailwind.config.js && \
+    echo '  theme: {' >> tailwind.config.js && \
+    echo '    extend: {' >> tailwind.config.js && \
+    echo '      colors: {' >> tailwind.config.js && \
+    echo '        background: "hsl(var(--background))",' >> tailwind.config.js && \
+    echo '        foreground: "hsl(var(--foreground))",' >> tailwind.config.js && \
+    echo '        card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" },' >> tailwind.config.js && \
+    echo '        primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },' >> tailwind.config.js && \
+    echo '        secondary: { DEFAULT: "hsl(var(--secondary))", foreground: "hsl(var(--secondary-foreground))" },' >> tailwind.config.js && \
+    echo '        muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },' >> tailwind.config.js && \
+    echo '        accent: { DEFAULT: "hsl(var(--accent))", foreground: "hsl(var(--accent-foreground))" },' >> tailwind.config.js && \
+    echo '        border: "hsl(var(--border))",' >> tailwind.config.js && \
+    echo '        input: "hsl(var(--input))",' >> tailwind.config.js && \
+    echo '        ring: "hsl(var(--ring))"' >> tailwind.config.js && \
+    echo '      }' >> tailwind.config.js && \
+    echo '    }' >> tailwind.config.js && \
+    echo '  },' >> tailwind.config.js && \
+    echo '  plugins: [require("tailwindcss-animate")]' >> tailwind.config.js && \
+    echo '}' >> tailwind.config.js
 
 # Create minimal postcss config inline
 RUN echo 'module.exports = {' > postcss.config.js && \
