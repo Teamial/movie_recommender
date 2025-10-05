@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
-import { Film, Heart, Bookmark, Sparkles, Menu, Settings } from 'lucide-react';
+import { Film, Heart, Bookmark, Sparkles, Menu, Settings, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '@/components/ui/button';
+import { useTheme } from '../context/ThemeContext';
 import {
   Sheet,
   SheetContent,
@@ -11,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 
 const Navbar = () => {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <nav className="w-full border-b bg-background shadow-xs">
@@ -58,6 +60,16 @@ const Navbar = () => {
 
         {/* Desktop Auth */}
         <div className="hidden md:flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-xl"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
           {user ? (
             <>
               <Link 
@@ -108,6 +120,23 @@ const Navbar = () => {
           <SheetContent side="right" className="w-[85vw] sm:max-w-sm p-6">
             <div className="flex flex-col gap-4">
               <h3 className="font-semibold text-lg mb-2">Cinemate</h3>
+
+              <Button
+                variant="outline"
+                onClick={toggleTheme}
+                className="rounded-xl w-full justify-start"
+                aria-label="Toggle theme"
+              >
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="h-4 w-4 mr-2" /> Light mode
+                  </>
+                ) : (
+                  <>
+                    <Moon className="h-4 w-4 mr-2" /> Dark mode
+                  </>
+                )}
+              </Button>
               
               <Link 
                 to="/" 

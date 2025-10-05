@@ -208,6 +208,8 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
   const [localRating, setLocalRating] = useState(userRating);
   const [hoverRating, setHoverRating] = useState(0);
   const [theme, setTheme] = useState(getDefaultPalette());
+  const [detail, setDetail] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   useEffect(() => {
     setLocalFavorite(isFavorite);
@@ -225,6 +227,21 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
       }
     }
   }, [movie?.backdrop_url]);
+
+  // Fetch full movie details (cast/crew/keywords/runtime/trailer) when missing
+  useEffect(() => {
+    if (!isOpen || !movie) return;
+    const hasCast = Array.isArray(movie.cast) ? movie.cast.length > 0 : typeof movie.cast === 'string';
+    const hasCrew = Array.isArray(movie.crew) ? movie.crew.length > 0 : typeof movie.crew === 'string';
+    const hasKeywords = Array.isArray(movie.keywords) ? movie.keywords.length > 0 : typeof movie.keywords === 'string';
+    const needsDetails = !(hasCast && hasCrew) || !hasKeywords || !movie.runtime || movie.trailer_key == null;
+    if (!needsDetails) { setDetail(null); return; }
+    setDetailsLoading(true);
+    getMovie(movie.id)
+      .then(res => { if (res?.data) setDetail(res.data); })
+      .catch(() => {})
+      .finally(() => setDetailsLoading(false));
+  }, [isOpen, movie?.id]);
 
 
   if (!isOpen || !movie) return null;
@@ -272,13 +289,14 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
     }
   };
 
-  const genres = movie.genres ? (typeof movie.genres === 'string' ? JSON.parse(movie.genres) : movie.genres) : [];
-  const releaseYear = movie.release_date ? new Date(movie.release_date).getFullYear() : 'N/A';
+  const merged = detail ? { ...movie, ...detail } : movie || {};
+  const genres = merged.genres ? (typeof merged.genres === 'string' ? JSON.parse(merged.genres) : merged.genres) : [];
+  const releaseYear = merged.release_date ? new Date(merged.release_date).getFullYear() : 'N/A';
   
   // Parse enriched data
-  const cast = movie.cast ? (typeof movie.cast === 'string' ? JSON.parse(movie.cast) : movie.cast) : [];
-  const crew = movie.crew ? (typeof movie.crew === 'string' ? JSON.parse(movie.crew) : movie.crew) : [];
-  const keywords = movie.keywords ? (typeof movie.keywords === 'string' ? JSON.parse(movie.keywords) : movie.keywords) : [];
+  const cast = merged.cast ? (typeof merged.cast === 'string' ? JSON.parse(merged.cast) : merged.cast) : [];
+  const crew = merged.crew ? (typeof merged.crew === 'string' ? JSON.parse(merged.crew) : merged.crew) : [];
+  const keywords = merged.keywords ? (typeof merged.keywords === 'string' ? JSON.parse(merged.keywords) : merged.keywords) : [];
   
   // Format currency
   const formatCurrency = (amount) => {
@@ -350,7 +368,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                     animate={{ scale: 1 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
                     className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${getBackdropUrl(movie) || getPosterUrl(movie)})` }}
+                    style={{ backgroundImage: `url(${getBackdropUrl(merged) || getPosterUrl(merged)})` }}
                   />
                   
                   {/* Themed Gradient Overlay */}
@@ -372,13 +390,13 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                     <div className="max-w-7xl mx-auto">
                       <div className="flex flex-col md:flex-row items-end gap-6 md:gap-8">
                         {/* Poster */}
-                        {getPosterUrl(movie) && (
+                        {getPosterUrl(merged) && (
                           <motion.img 
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2, duration: 0.5 }}
-                            src={getPosterUrl(movie)} 
-                            alt={movie.title}
+                            src={getPosterUrl(merged)} 
+                            alt={merged.title}
                             className="w-44 md:w-56 h-64 md:h-80 object-cover rounded-2xl shadow-2xl ring-2 ring-white/10"
                           />
                         )}
@@ -396,13 +414,13 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                               style={{ color: theme.muted }}
                             >
                               {releaseYear !== 'N/A' && <span>{releaseYear}</span>}
-                              {movie.runtime && (
+                              {merged.runtime && (
                                 <>
                                   <span>•</span>
                                   <span>{formatRuntime(movie.runtime)}</span>
                                 </>
                               )}
-                              {movie.original_language && (
+                              {merged.original_language && (
                                 <>
                                   <span>•</span>
                                   <span>{getLanguageName(movie.original_language)}</span>
@@ -418,10 +436,10 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                 textShadow: '0 2px 12px rgba(0,0,0,0.5)'
                               }}
                             >
-                              {movie.title}
+                              {merged.title}
                             </h1>
                             
-                            {movie.tagline && (
+                            {merged.tagline && (
                               <p 
                                 className="text-base md:text-lg italic mb-4 max-w-2xl leading-relaxed"
                                 style={{ 
@@ -450,7 +468,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                     fill={theme.accent}
                                   />
                                   <span className="text-lg font-bold">
-                                    {movie.vote_average.toFixed(1)}
+                                    {merged.vote_average?.toFixed(1)}
                                   </span>
                                 </div>
                               )}
@@ -479,7 +497,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                 transition={{ delay: 0.5, duration: 0.4 }}
                                 className="flex flex-wrap gap-3"
                               >
-                                {movie.trailer_key && (
+                                {merged.trailer_key && (
                                   <Button
                                     asChild
                                     className="rounded-xl font-semibold shadow-lg hover:scale-105 transition-transform"
@@ -490,7 +508,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                     size="lg"
                                   >
                                     <a
-                                      href={`https://www.youtube.com/watch?v=${movie.trailer_key}`}
+                                      href={`https://www.youtube.com/watch?v=${merged.trailer_key}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center gap-2"
@@ -763,12 +781,12 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                   className="font-semibold text-sm"
                                   style={{ color: theme.text }}
                                 >
-                                  {movie.release_date ? new Date(movie.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                                  {merged.release_date ? new Date(merged.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
                                 </p>
                               </div>
                             </div>
                             
-                            {movie.runtime && (
+                            {merged.runtime && (
                               <>
                                 <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                                 <div>
@@ -801,7 +819,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                 className="font-semibold text-base"
                                 style={{ color: theme.text }}
                               >
-                                {getLanguageName(movie.original_language)}
+                                {getLanguageName(merged.original_language)}
                               </p>
                             </div>
                             
@@ -851,7 +869,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                             Stats
                           </h3>
                           <div className="space-y-4">
-                            {movie.vote_average && (
+                            {merged.vote_average && (
                               <>
                                 <div className="flex justify-between items-center gap-3">
                                   <span 
@@ -870,14 +888,14 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                       className="font-bold text-base"
                                       style={{ color: theme.text }}
                                     >
-                                      {movie.vote_average.toFixed(1)}/10
+                                      {merged.vote_average.toFixed(1)}/10
                                     </span>
                                   </div>
                                 </div>
                                 <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                               </>
                             )}
-                            {movie.popularity && (
+                            {merged.popularity && (
                               <>
                                 <div className="flex justify-between items-center gap-3">
                                   <span 
@@ -895,7 +913,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                       className="font-bold text-sm whitespace-nowrap"
                                       style={{ color: theme.text }}
                                     >
-                                      {getTrendingRank(movie.popularity)}
+                                      {getTrendingRank(merged.popularity)}
                                     </span>
                                   </div>
                                 </div>
@@ -918,11 +936,11 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                   className="font-bold text-base whitespace-nowrap"
                                   style={{ color: theme.text }}
                                 >
-                                  {formatViews(movie.vote_count, movie.popularity)}
+                                  {formatViews(merged.vote_count, merged.popularity)}
                                 </span>
                               </div>
                             </div>
-                            {(movie.budget && movie.budget > 0) && (
+                            {(merged.budget && merged.budget > 0) && (
                               <>
                                 <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                                 <div className="flex justify-between items-center gap-3">
@@ -936,12 +954,12 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                     className="font-bold text-base flex-shrink-0"
                                     style={{ color: theme.text }}
                                   >
-                                    {formatCurrency(movie.budget)}
+                                    {formatCurrency(merged.budget)}
                                   </span>
                                 </div>
                               </>
                             )}
-                            {(movie.revenue && movie.revenue > 0) && (
+                            {(merged.revenue && merged.revenue > 0) && (
                               <>
                                 <div style={{ height: '1px', backgroundColor: theme.chipBorder, opacity: 0.3 }} />
                                 <div className="flex justify-between items-center gap-3">
@@ -955,7 +973,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                                     className="font-bold text-base flex-shrink-0"
                                     style={{ color: theme.text }}
                                   >
-                                    {formatCurrency(movie.revenue)}
+                                    {formatCurrency(merged.revenue)}
                                   </span>
                                 </div>
                               </>
