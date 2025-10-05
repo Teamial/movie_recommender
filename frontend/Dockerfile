@@ -21,10 +21,6 @@ COPY frontend/components.json ./
 COPY frontend/jsconfig.json ./
 COPY frontend/eslint.config.js ./
 
-# Debug: Check if utils.js exists
-RUN ls -la /app/src/lib/ || echo "lib directory not found"
-RUN find /app -name "utils*" || echo "utils files not found"
-
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
@@ -35,8 +31,26 @@ FROM nginx:alpine
 # Copy built app
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy nginx config
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# Create nginx config inline (more reliable than copying file)
+RUN echo 'server {' > /etc/nginx/conf.d/default.conf && \
+    echo '    listen 80;' >> /etc/nginx/conf.d/default.conf && \
+    echo '    server_name _;' >> /etc/nginx/conf.d/default.conf && \
+    echo '    root /usr/share/nginx/html;' >> /etc/nginx/conf.d/default.conf && \
+    echo '    index index.html;' >> /etc/nginx/conf.d/default.conf && \
+    echo '    location / {' >> /etc/nginx/conf.d/default.conf && \
+    echo '        try_files $uri $uri/ /index.html;' >> /etc/nginx/conf.d/default.conf && \
+    echo '        add_header Content-Security-Policy "upgrade-insecure-requests" always;' >> /etc/nginx/conf.d/default.conf && \
+    echo '    }' >> /etc/nginx/conf.d/default.conf && \
+    echo '    location = /index.html {' >> /etc/nginx/conf.d/default.conf && \
+    echo '        add_header Cache-Control "no-store" always;' >> /etc/nginx/conf.d/default.conf && \
+    echo '        try_files $uri =404;' >> /etc/nginx/conf.d/default.conf && \
+    echo '    }' >> /etc/nginx/conf.d/default.conf && \
+    echo '    location ~* \\.(?:js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$ {' >> /etc/nginx/conf.d/default.conf && \
+    echo '        try_files $uri =404;' >> /etc/nginx/conf.d/default.conf && \
+    echo '        expires 1y;' >> /etc/nginx/conf.d/default.conf && \
+    echo '        add_header Cache-Control "public, immutable";' >> /etc/nginx/conf.d/default.conf && \
+    echo '    }' >> /etc/nginx/conf.d/default.conf && \
+    echo '}' >> /etc/nginx/conf.d/default.conf
 
 # Expose port
 EXPOSE 80
