@@ -10,70 +10,17 @@ COPY package*.json ./
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm ci --silent || npm install --no-audit --no-fund --silent
 
-# Copy source code (only essential files)
+# Copy all necessary config files
+COPY index.html ./
+COPY vite.config.js ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
+COPY jsconfig.json ./
+COPY components.json ./
+
+# Copy source code
 COPY src ./src
 COPY public ./public
-
-# Create index.html inline
-RUN echo '<!doctype html>' > index.html && \
-    echo '<html lang="en">' >> index.html && \
-    echo '  <head>' >> index.html && \
-    echo '    <meta charset="UTF-8" />' >> index.html && \
-    echo '    <link rel="icon" type="image/svg+xml" href="/vite.svg" />' >> index.html && \
-    echo '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />' >> index.html && \
-    echo '    <title>Movie Recommender</title>' >> index.html && \
-    echo '  </head>' >> index.html && \
-    echo '  <body>' >> index.html && \
-    echo '    <div id="root"></div>' >> index.html && \
-    echo '    <script type="module" src="/src/main.jsx"></script>' >> index.html && \
-    echo '  </body>' >> index.html && \
-    echo '</html>' >> index.html
-
-# Create vite config inline
-RUN echo 'import path from "path"' > vite.config.js && \
-    echo 'import { defineConfig } from "vite"' >> vite.config.js && \
-    echo 'import react from "@vitejs/plugin-react"' >> vite.config.js && \
-    echo '' >> vite.config.js && \
-    echo 'export default defineConfig({' >> vite.config.js && \
-    echo '  plugins: [react()],' >> vite.config.js && \
-    echo '  resolve: {' >> vite.config.js && \
-    echo '    alias: {' >> vite.config.js && \
-    echo '      "@": path.resolve(__dirname, "./src"),' >> vite.config.js && \
-    echo '    },' >> vite.config.js && \
-    echo '  },' >> vite.config.js && \
-    echo '})' >> vite.config.js
-
-# Create minimal tailwind config inline
-RUN echo '/** @type {import("tailwindcss").Config} */' > tailwind.config.js && \
-    echo 'export default {' >> tailwind.config.js && \
-    echo '  darkMode: ["class"],' >> tailwind.config.js && \
-    echo '  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],' >> tailwind.config.js && \
-    echo '  theme: {' >> tailwind.config.js && \
-    echo '    extend: {' >> tailwind.config.js && \
-    echo '      colors: {' >> tailwind.config.js && \
-    echo '        background: "hsl(var(--background))",' >> tailwind.config.js && \
-    echo '        foreground: "hsl(var(--foreground))",' >> tailwind.config.js && \
-    echo '        card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" },' >> tailwind.config.js && \
-    echo '        primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },' >> tailwind.config.js && \
-    echo '        secondary: { DEFAULT: "hsl(var(--secondary))", foreground: "hsl(var(--secondary-foreground))" },' >> tailwind.config.js && \
-    echo '        muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },' >> tailwind.config.js && \
-    echo '        accent: { DEFAULT: "hsl(var(--accent))", foreground: "hsl(var(--accent-foreground))" },' >> tailwind.config.js && \
-    echo '        border: "hsl(var(--border))",' >> tailwind.config.js && \
-    echo '        input: "hsl(var(--input))",' >> tailwind.config.js && \
-    echo '        ring: "hsl(var(--ring))"' >> tailwind.config.js && \
-    echo '      }' >> tailwind.config.js && \
-    echo '    }' >> tailwind.config.js && \
-    echo '  },' >> tailwind.config.js && \
-    echo '  plugins: [require("tailwindcss-animate")]' >> tailwind.config.js && \
-    echo '}' >> tailwind.config.js
-
-# Create minimal postcss config inline (ES module format)
-RUN echo 'export default {' > postcss.config.js && \
-    echo '  plugins: {' >> postcss.config.js && \
-    echo '    tailwindcss: {},' >> postcss.config.js && \
-    echo '    autoprefixer: {},' >> postcss.config.js && \
-    echo '  },' >> postcss.config.js && \
-    echo '}' >> postcss.config.js
 
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
