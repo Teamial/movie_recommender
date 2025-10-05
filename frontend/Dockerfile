@@ -13,7 +13,21 @@ RUN npm ci --silent || npm install --no-audit --no-fund --silent
 # Copy source code (only essential files)
 COPY frontend/src ./src
 COPY frontend/public ./public
-COPY frontend/index.html ./
+
+# Create index.html inline
+RUN echo '<!doctype html>' > index.html && \
+    echo '<html lang="en">' >> index.html && \
+    echo '  <head>' >> index.html && \
+    echo '    <meta charset="UTF-8" />' >> index.html && \
+    echo '    <link rel="icon" type="image/svg+xml" href="/vite.svg" />' >> index.html && \
+    echo '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />' >> index.html && \
+    echo '    <title>Movie Recommender</title>' >> index.html && \
+    echo '  </head>' >> index.html && \
+    echo '  <body>' >> index.html && \
+    echo '    <div id="root"></div>' >> index.html && \
+    echo '    <script type="module" src="/src/main.jsx"></script>' >> index.html && \
+    echo '  </body>' >> index.html && \
+    echo '</html>' >> index.html
 
 # Create vite config inline
 RUN echo 'import path from "path"' > vite.config.js && \
