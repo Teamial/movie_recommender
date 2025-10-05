@@ -6,7 +6,7 @@ services:
     container_name: movies-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: movies_db
     ports:
       - "5433:5432"
