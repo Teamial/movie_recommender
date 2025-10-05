@@ -1,0 +1,36 @@
+# Lightweight requirements for Railway deployment
+# Excludes heavy ML dependencies to stay under 4GB limit
+
+# Core API dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+requests>=2.31.0
+pandas>=2.0.0
+numpy>=1.22.0
+scipy>=1.11.0
+sqlalchemy>=2.0.0
+python-dotenv>=1.0.0
+scikit-learn>=1.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt==4.0.1
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6
+pydantic>=2.0.0
+email-validator>=2.1.0.post1
+apscheduler>=3.10.4
+psycopg2-binary>=2.9.9
+pgvector>=0.2.4
+
+# Lightweight ML alternatives
+# Note: PyTorch and heavy ML libraries will be installed separately in Dockerfile
+# to use CPU-only versions and reduce size
+
+# Graph Learning (lightweight)
+networkx>=3.0
+node2vec>=0.4.6
+
+# Image processing (lightweight)
+Pillow>=10.0.0
+
+# Text processing (lightweight alternative to sentence-transformers)
+# We'll use a simpler approach for embeddings
