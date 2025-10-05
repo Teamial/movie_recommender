@@ -14,7 +14,20 @@ RUN npm ci --silent || npm install --no-audit --no-fund --silent
 COPY frontend/src ./src
 COPY frontend/public ./public
 COPY frontend/index.html ./
-COPY frontend/vite.config.js ./
+
+# Create vite config inline
+RUN echo 'import path from "path"' > vite.config.js && \
+    echo 'import { defineConfig } from "vite"' >> vite.config.js && \
+    echo 'import react from "@vitejs/plugin-react"' >> vite.config.js && \
+    echo '' >> vite.config.js && \
+    echo 'export default defineConfig({' >> vite.config.js && \
+    echo '  plugins: [react()],' >> vite.config.js && \
+    echo '  resolve: {' >> vite.config.js && \
+    echo '    alias: {' >> vite.config.js && \
+    echo '      "@": path.resolve(__dirname, "./src"),' >> vite.config.js && \
+    echo '    },' >> vite.config.js && \
+    echo '  },' >> vite.config.js && \
+    echo '})' >> vite.config.js
 
 # Create minimal tailwind config inline
 RUN echo '/** @type {import("tailwindcss").Config} */' > tailwind.config.js && \
