@@ -17,7 +17,7 @@ New dependencies added:
 ```bash
 # Required
 export TMDB_API_KEY="your_tmdb_api_key"
-export DATABASE_URL="***REMOVED***ql://user:password@localhost:5432/movies_db"
+export DATABASE_URL="postgresql://user:password@localhost:5432/movies_db"
 ```
 
 Get a free TMDB API key: https://www.themoviedb.org/settings/api
@@ -366,7 +366,7 @@ python backend/tests/test_db.py
 
 # Check DATABASE_URL format
 echo $DATABASE_URL
-# Should be: ***REMOVED***ql://user:password@host:port/database
+# Should be: postgresql://user:password@host:port/database
 ```
 
 ### Issue: Missing columns error

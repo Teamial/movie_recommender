@@ -1,22 +1,22 @@
 version: '3.8'
 
 services:
-  ***REMOVED***:
+  postgres:
     image: pgvector/pgvector:pg16
-    container_name: movies-***REMOVED***
+    container_name: movies-postgres
     environment:
-      POSTGRES_USER: ***REMOVED***
-      POSTGRES_PASSWORD: ***REMOVED***
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: movies_db
     ports:
       - "5433:5432"
     volumes:
-      - ***REMOVED***_data:/var/lib/***REMOVED***ql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ***REMOVED***"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  ***REMOVED***_data:
+  postgres_data:

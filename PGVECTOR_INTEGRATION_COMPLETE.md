@@ -191,7 +191,7 @@ python backend/generate_embeddings.py
 
 ### Check Embedding Stats
 ```bash
-docker exec movies-***REMOVED*** psql -U ***REMOVED*** -d movies_db -c "
+docker exec movies-postgres psql -U postgres -d movies_db -c "
 SELECT 
     COUNT(*) as total,
     COUNT(embedding) as with_embeddings,

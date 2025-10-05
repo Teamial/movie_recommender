@@ -90,7 +90,7 @@ uvicorn backend.main:app --reload
 ### Test 1: Check Pgvector Extension
 
 ```bash
-psql -h localhost -U ***REMOVED*** -d movies_db -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';"
+psql -h localhost -U postgres -d movies_db -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';"
 ```
 
 Expected output:
@@ -583,7 +583,7 @@ For issues or questions:
 1. Check this guide's troubleshooting section
 2. Verify migration ran successfully: `python backend/migrate_add_pgvector.py`
 3. Test manually: `python backend/generate_embeddings.py`
-4. Check logs: `docker-compose logs ***REMOVED***`
+4. Check logs: `docker-compose logs postgres`
 
 ---
 

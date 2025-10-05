@@ -4,7 +4,7 @@
 
 ### Check Embedding Coverage
 ```bash
-docker exec movies-***REMOVED*** psql -U ***REMOVED*** -d movies_db -c "
+docker exec movies-postgres psql -U postgres -d movies_db -c "
 SELECT 
     COUNT(*) as total_movies,
     COUNT(embedding) as with_embeddings,
@@ -74,7 +74,7 @@ python backend/generate_embeddings.py
 
 ### Check Index Status
 ```bash
-docker exec movies-***REMOVED*** psql -U ***REMOVED*** -d movies_db -c "
+docker exec movies-postgres psql -U postgres -d movies_db -c "
 SELECT schemaname, tablename, indexname 
 FROM pg_indexes 
 WHERE tablename = 'movies' AND indexname LIKE '%embedding%';"
@@ -82,7 +82,7 @@ WHERE tablename = 'movies' AND indexname LIKE '%embedding%';"
 
 ### Sample Movie Embeddings
 ```bash
-docker exec movies-***REMOVED*** psql -U ***REMOVED*** -d movies_db -c "
+docker exec movies-postgres psql -U postgres -d movies_db -c "
 SELECT id, title, 
        CASE WHEN embedding IS NOT NULL THEN '✓' ELSE '✗' END as has_embedding
 FROM movies 
@@ -91,7 +91,7 @@ LIMIT 10;"
 
 ### Find Movies Without Embeddings
 ```bash
-docker exec movies-***REMOVED*** psql -U ***REMOVED*** -d movies_db -c "
+docker exec movies-postgres psql -U postgres -d movies_db -c "
 SELECT COUNT(*), 
        STRING_AGG(title, ', ' LIMIT 5) as sample_titles
 FROM movies 
@@ -159,10 +159,10 @@ python -c "from backend.database import engine; engine.connect()"
 ### Slow Queries
 ```bash
 # Check if index exists
-docker exec movies-***REMOVED*** psql -U ***REMOVED*** -d movies_db -c "\d movies"
+docker exec movies-postgres psql -U postgres -d movies_db -c "\d movies"
 
 # Rebuild index
-docker exec movies-***REMOVED*** psql -U ***REMOVED*** -d movies_db -c "
+docker exec movies-postgres psql -U postgres -d movies_db -c "
 DROP INDEX IF EXISTS movies_embedding_idx;
 CREATE INDEX movies_embedding_idx ON movies 
 USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);"
@@ -171,7 +171,7 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);"
 ### Port Conflicts
 Check `.env` file:
 ```
-DATABASE_URL=***REMOVED***ql://***REMOVED***:***REMOVED***@localhost:5432/movies_db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/movies_db
 ```
 
 ## 📚 Files Reference

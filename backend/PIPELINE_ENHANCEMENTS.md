@@ -166,7 +166,7 @@ Required environment variables:
 TMDB_API_KEY=your_api_key_here
 
 # PostgreSQL connection string
-DATABASE_URL=***REMOVED***ql://user:password@localhost:5432/movies_db
+DATABASE_URL=postgresql://user:password@localhost:5432/movies_db
 ```
 
 ## 📊 Database Schema Updates
