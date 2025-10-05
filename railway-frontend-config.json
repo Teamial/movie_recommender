@@ -1,0 +1,12 @@
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "cd frontend && npm ci && npm run build",
+    "outputDirectory": "frontend/dist",
+    "installCommand": "cd frontend && npm ci"
+  },
+  "deploy": {
+    "startCommand": "npx serve -s frontend/dist -l $PORT",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
