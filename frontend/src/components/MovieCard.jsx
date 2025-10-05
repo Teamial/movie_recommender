@@ -145,7 +145,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
               }}
             />
           ) : null}
-          <div className="w-full h-full bg-muted flex items-center justify-center" style={{ display: movie.poster_url ? 'none' : 'flex' }}>
+          <div className="w-full h-full bg-muted flex items-center justify-center" style={{ display: getPosterUrl(movie) ? 'none' : 'flex' }}>
             <span className="text-muted-foreground">No Image</span>
           </div>
           
