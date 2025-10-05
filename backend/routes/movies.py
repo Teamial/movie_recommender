@@ -91,8 +91,11 @@ def get_recommendations(
     
     # Use simplified hybrid approach - no aggressive context filtering
     # Fetch a larger pool to support paging/refresh without duplicates
-    pool_size = max(limit + offset, 50)
-    pool_size = min(pool_size, 100)
+    # Grow the candidate pool as the user paginates so pages can expand
+    # Add a small cushion to absorb thumbs filtering/boosting
+    pool_size = max(limit + offset + 50, 50)
+    # Reasonable upper safety cap to avoid huge queries; adjust based on load
+    pool_size = min(pool_size, 500)
     recommendations = recommender.get_hybrid_recommendations(
         user_id, 
         pool_size, 
