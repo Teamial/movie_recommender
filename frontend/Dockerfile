@@ -8,10 +8,18 @@ COPY package*.json ./
 
 # Install dependencies with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN npm ci --only=production --silent || npm install --no-audit --no-fund --silent
+RUN npm ci --silent || npm install --no-audit --no-fund --silent
 
-# Copy source code
-COPY . ./
+# Copy source code (only frontend files)
+COPY src ./src
+COPY public ./public
+COPY index.html ./
+COPY vite.config.js ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
+COPY components.json ./
+COPY jsconfig.json ./
+COPY eslint.config.js ./
 
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
