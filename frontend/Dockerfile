@@ -67,8 +67,8 @@ RUN echo '/** @type {import("tailwindcss").Config} */' > tailwind.config.js && \
     echo '  plugins: [require("tailwindcss-animate")]' >> tailwind.config.js && \
     echo '}' >> tailwind.config.js
 
-# Create minimal postcss config inline
-RUN echo 'module.exports = {' > postcss.config.js && \
+# Create minimal postcss config inline (ES module format)
+RUN echo 'export default {' > postcss.config.js && \
     echo '  plugins: {' >> postcss.config.js && \
     echo '    tailwindcss: {},' >> postcss.config.js && \
     echo '    autoprefixer: {},' >> postcss.config.js && \
