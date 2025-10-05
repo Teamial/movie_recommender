@@ -11,6 +11,7 @@ import api from '../services/api';
 const Recommendations = () => {
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [watchlistIds, setWatchlistIds] = useState(new Set());
@@ -19,6 +20,7 @@ const Recommendations = () => {
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
   const [thumbsMovieIds, setThumbsMovieIds] = useState(new Set());
+  const [seed, setSeed] = useState(() => Date.now());
   const { user } = useAuth();
 
   useEffect(() => {
@@ -36,35 +38,45 @@ const Recommendations = () => {
       
       console.log(`Fetching recommendations: isRefresh=${isRefresh}`);
       
-      // Unified endpoint - always returns 30 great movies!
-      const limit = isRefresh ? 10 : 30;
+      // On refresh, reset seed to reshuffle and reload initial page
+      const nextSeed = isRefresh ? Date.now() : seed;
+      if (isRefresh) setSeed(nextSeed);
+      const limit = 30;
       
       const startTime = Date.now();
-      const response = await getRecommendations(user.id, limit);
+      const response = await getRecommendations(user.id, limit, { offset: 0, seed: nextSeed });
       const endTime = Date.now();
       
       console.log(`Recommendations fetched in ${endTime - startTime}ms, got ${response.data.length} movies`);
       
-      if (isRefresh) {
-        // Add new movies to existing list, avoiding duplicates and thumbs movies
-        setRecommendations(prevRecommendations => {
-          const existingIds = new Set(prevRecommendations.map(movie => movie.id));
-          const newMovies = response.data.filter(movie => 
-            !existingIds.has(movie.id) && !thumbsMovieIds.has(movie.id)
-          );
-          console.log(`Adding ${newMovies.length} new movies to existing ${prevRecommendations.length}`);
-          return [...prevRecommendations, ...newMovies];
-        });
-      } else {
-        // Filter out thumbs movies from initial load
-        const filteredMovies = response.data.filter(movie => !thumbsMovieIds.has(movie.id));
-        setRecommendations(filteredMovies);
-      }
+      // Replace list on load/refresh; filter out thumbs movies
+      const filteredMovies = response.data.filter(movie => !thumbsMovieIds.has(movie.id));
+      setRecommendations(filteredMovies);
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       setError('Unable to load recommendations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMore = async () => {
+    try {
+      setLoadingMore(true);
+      setError(null);
+      const response = await getRecommendations(user.id, 10, { offset: recommendations.length, seed });
+      setRecommendations(prevRecommendations => {
+        const existingIds = new Set(prevRecommendations.map(movie => movie.id));
+        const newMovies = response.data.filter(movie =>
+          !existingIds.has(movie.id) && !thumbsMovieIds.has(movie.id)
+        );
+        return [...prevRecommendations, ...newMovies];
+      });
+    } catch (err) {
+      console.error('Error fetching more recommendations:', err);
+      setError('Unable to load more recommendations');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -363,33 +375,40 @@ const Recommendations = () => {
             </Button>
           </motion.div>
         ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6"
-          >
-            <AnimatePresence mode="popLayout">
-              {filteredRecommendations.map((movie, index) => (
-                <motion.div
-                  key={movie.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: index * 0.02 }}
-                  layout
-                >
-                  <MovieCard
-                    movie={movie}
-                    isFavorite={favoriteIds.has(movie.id)}
-                    isInWatchlist={watchlistIds.has(movie.id)}
-                    userRating={userRatings[movie.id]}
-                    onUpdate={handleUpdate}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6"
+            >
+              <AnimatePresence mode="popLayout">
+                {filteredRecommendations.map((movie, index) => (
+                  <motion.div
+                    key={movie.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ delay: index * 0.02 }}
+                    layout
+                  >
+                    <MovieCard
+                      movie={movie}
+                      isFavorite={favoriteIds.has(movie.id)}
+                      isInWatchlist={watchlistIds.has(movie.id)}
+                      userRating={userRatings[movie.id]}
+                      onUpdate={handleUpdate}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+            <div className="flex justify-center mt-8">
+              <Button onClick={fetchMore} disabled={loadingMore} variant="outline" className="rounded-xl">
+                {loadingMore ? 'Loading…' : 'See more'}
+              </Button>
+            </div>
+          </>
         )}
       </div>
     </div>

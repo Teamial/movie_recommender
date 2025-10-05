@@ -114,6 +114,96 @@ class MovieETLPipeline:
         
         logger.info(f"✅ Enriched {len(enriched)} movies\n")
         return enriched
+
+    def enrich_missing_trailers_and_details(self, limit_per_run: int = 500, force: bool = False):
+        """Enrich movies already in the database that are missing trailers or details.
+
+        Args:
+            limit_per_run: Max movies to enrich in this run (protect API quotas)
+            force: If True, re-fetch even if fields exist
+        """
+        logger.info(f"🔧 Enriching existing DB movies (limit={limit_per_run}, force={force})...")
+
+        with self.engine.connect() as conn:
+            # Select ids missing key enriched fields
+            condition = (
+                "trailer_key IS NULL OR runtime IS NULL OR keywords IS NULL OR \"cast\" IS NULL OR crew IS NULL"
+            )
+            if force:
+                condition = "TRUE"  # Re-enrich everything (bounded by limit)
+
+            ids = [row[0] for row in conn.execute(text(f"""
+                SELECT id FROM movies
+                WHERE {condition}
+                ORDER BY popularity DESC NULLS LAST, vote_count DESC NULLS LAST
+                LIMIT :limit
+            """), {"limit": limit_per_run}).fetchall()]
+
+        if not ids:
+            logger.info("✅ Nothing to enrich – all movies have details")
+            return {"updated": 0}
+
+        updated = 0
+        for movie_id in ids:
+            details = self.extract_movie_details(movie_id)
+            if not details:
+                continue
+
+            cast = details.get('credits', {}).get('cast', [])[:10]
+            crew = details.get('credits', {}).get('crew', [])[:5]
+            keywords = [k['name'] for k in details.get('keywords', {}).get('keywords', [])]
+            runtime = details.get('runtime')
+            budget = details.get('budget')
+            revenue = details.get('revenue')
+            tagline = details.get('tagline')
+            original_language = details.get('original_language')
+
+            similar = details.get('similar', {}).get('results', [])
+            similar_ids = [m['id'] for m in similar[:5]] if similar else None
+
+            videos = details.get('videos', {}).get('results', [])
+            trailers = [v for v in videos if v.get('type') == 'Trailer' and v.get('site') == 'YouTube']
+            trailer_key = trailers[0]['key'] if trailers else None
+
+            payload = {
+                "cast": json.dumps([{
+                    'name': c['name'],
+                    'character': c.get('character', ''),
+                    'profile_path': c.get('profile_path', None)
+                } for c in cast]) if cast else None,
+                "crew": json.dumps([{'name': c['name'], 'job': c.get('job', '')} for c in crew]) if crew else None,
+                "keywords": json.dumps(keywords) if keywords else None,
+                "runtime": runtime,
+                "budget": budget,
+                "revenue": revenue,
+                "tagline": tagline,
+                "similar_movie_ids": json.dumps(similar_ids) if similar_ids else None,
+                "trailer_key": trailer_key,
+                "original_language": original_language
+            }
+
+            # Build dynamic SET clause only for non-null values unless force=True
+            set_clauses = []
+            params = {"id": movie_id}
+            for col, val in payload.items():
+                if force or val is not None:
+                    set_clauses.append(f'"{col}" = :{col}')
+                    params[col] = val
+
+            if not set_clauses:
+                continue
+
+            with self.engine.connect() as conn:
+                conn.execute(text(f"""
+                    UPDATE movies
+                    SET {', '.join(set_clauses)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :id
+                """), params)
+                conn.commit()
+                updated += 1
+
+        logger.info(f"✅ Enriched {updated} existing movies")
+        return {"updated": updated}
     
     def extract_genres(self):
         """Extract genre list from TMDB"""

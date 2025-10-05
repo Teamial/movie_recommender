@@ -65,6 +65,8 @@ def get_movies(
 def get_recommendations(
     user_id: int = Query(...),
     limit: int = Query(30, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    seed: Optional[int] = Query(None, description="Optional seed to shuffle results deterministically"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -88,13 +90,25 @@ def get_recommendations(
     recommender = MovieRecommender(db)
     
     # Use simplified hybrid approach - no aggressive context filtering
+    # Fetch a larger pool to support paging/refresh without duplicates
+    pool_size = max(limit + offset, 50)
+    pool_size = min(pool_size, 100)
     recommendations = recommender.get_hybrid_recommendations(
         user_id, 
-        limit, 
-        use_context=False,  # Disable aggressive temporal/diversity filtering
+        pool_size, 
+        use_context=False,
         use_embeddings=False,
         use_graph=False
     )
+
+    # Optionally shuffle using seed for deterministic reshuffling
+    if seed is not None and len(recommendations) > 1:
+        import random
+        rng = random.Random(int(seed))
+        rng.shuffle(recommendations)
+
+    # Apply offset/limit window
+    recommendations = recommendations[offset:offset + limit]
     
     # Track recommendations for analytics
     try:

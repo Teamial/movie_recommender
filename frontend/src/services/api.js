@@ -56,7 +56,11 @@ export const createRating = (data, userId) => api.post(`/ratings/?user_id=${user
 export const getUserRatings = (userId) => api.get(`/ratings/user/${userId}`);
 
 // Recommendations - Unified endpoint (no modes needed!)
-export const getRecommendations = (userId, limit = 30) => api.get(`/movies/recommendations?user_id=${userId}&limit=${limit}`);
+export const getRecommendations = (userId, limit = 30, { offset = 0, seed } = {}) => {
+  const params = new URLSearchParams({ user_id: String(userId), limit: String(limit), offset: String(offset) });
+  if (seed !== undefined && seed !== null) params.append('seed', String(seed));
+  return api.get(`/movies/recommendations?${params.toString()}`);
+};
 
 // Analytics tracking
 export const trackRecommendationClick = (userId, movieId) => api.post('/analytics/track/click', { user_id: userId, movie_id: movieId });
