@@ -568,7 +568,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                 >
                   <div className="px-6 md:px-10 pt-12 pb-16 space-y-12 max-w-7xl mx-auto">
                     
-                    {/* Synopsis Section */}
+                    {/* Overview Section */}
                     <motion.div 
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -584,7 +584,7 @@ const MovieDetailModal = ({ movie, isOpen, onClose, isFavorite, isInWatchlist, u
                           className="text-2xl font-bold tracking-tight"
                           style={{ color: theme.text }}
                         >
-                          Synopsis
+                          Overview
                         </h2>
                       </div>
                       <p 
