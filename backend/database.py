@@ -62,6 +62,14 @@ if DATABASE_URL:
 
 # Create engine with connection pooling and error handling
 try:
+    # First, verify psycopg2 is available
+    try:
+        import psycopg2
+        logger.info(f"psycopg2 version: {psycopg2.__version__}")
+    except ImportError as e:
+        logger.error(f"psycopg2 not available: {e}")
+        raise ImportError("psycopg2-binary is not installed or not accessible")
+    
     # Ensure DATABASE_URL uses correct format for SQLAlchemy
     db_url = DATABASE_URL
     if db_url.startswith('postgresql+psycopg2://'):
