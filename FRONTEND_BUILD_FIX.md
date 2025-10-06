@@ -1,13 +1,20 @@
 # Frontend Build Issue Fix
 
-## Problem
-The frontend Docker build was failing with the error:
-```
-Could not load /app/src/lib/utils (imported by src/components/ui/button.jsx): ENOENT: no such file or directory
-```
+## Problems
+1. **Initial Issue**: The frontend Docker build was failing with the error:
+   ```
+   Could not load /app/src/lib/utils (imported by src/components/ui/button.jsx): ENOENT: no such file or directory
+   ```
 
-## Root Cause
-The issue was caused by incorrect Docker build context configuration in cloud deployment environments (Railway). The `utils.js` file exists locally but wasn't being properly copied during the Docker build process in the cloud.
+2. **Secondary Issue**: After fixing the utils.js issue, Railway deployment failed with:
+   ```
+   The executable `npx` could not be found
+   ```
+
+## Root Causes
+1. **Utils.js Issue**: Incorrect Docker build context configuration in cloud deployment environments (Railway). The `utils.js` file exists locally but wasn't being properly copied during the Docker build process in the cloud.
+
+2. **Npx Issue**: Conflicting Railway configurations - one using Dockerfile (correct) and another using Nixpacks with `npx serve` (incorrect). Railway was trying to use `npx serve` in the nginx production container where `npx` doesn't exist.
 
 ## Solution Implemented
 
@@ -19,9 +26,14 @@ The issue was caused by incorrect Docker build context configuration in cloud de
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
     "buildContext": "frontend"
+  },
+  "deploy": {
+    "startCommand": null
   }
 }
 ```
+
+**Removed**: `railway-frontend-config.json` (conflicting Nixpacks configuration)
 
 ### 2. Enhanced Dockerfile
 **File**: `frontend/Dockerfile`

@@ -28,6 +28,7 @@ fi
 
 # Deploy with correct build context
 echo "🔧 Building and deploying with Railway..."
+echo "📋 Using Dockerfile build method (not Nixpacks)"
 railway up --dockerfile Dockerfile
 
 echo "✅ Frontend deployment initiated!"
