@@ -35,6 +35,8 @@ RUN if [ ! -f src/lib/utils.js ]; then \
 
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
 # Production stage
