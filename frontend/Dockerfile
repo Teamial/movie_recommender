@@ -22,6 +22,17 @@ COPY components.json ./
 COPY src ./src
 COPY public ./public
 
+# Ensure utils.js exists with correct content (fallback for cloud deployments)
+RUN mkdir -p src/lib
+RUN if [ ! -f src/lib/utils.js ]; then \
+        echo 'import { clsx } from "clsx";' > src/lib/utils.js && \
+        echo 'import { twMerge } from "tailwind-merge";' >> src/lib/utils.js && \
+        echo '' >> src/lib/utils.js && \
+        echo 'export function cn(...inputs) {' >> src/lib/utils.js && \
+        echo '  return twMerge(clsx(inputs));' >> src/lib/utils.js && \
+        echo '}' >> src/lib/utils.js; \
+    fi
+
 # Build with increased memory limit
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
