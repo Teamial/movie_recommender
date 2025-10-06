@@ -36,7 +36,7 @@ railway variables set BACKEND_ALLOWED_ORIGINS="https://your-frontend-domain.com"
 ### Step 3: Deploy Frontend
 ```bash
 # Deploy frontend (separate service)
-railway up --service frontend --dockerfile frontend/Dockerfile
+railway up --service frontend --dockerfile Dockerfile --build-context frontend
 
 # Set frontend environment variables
 railway variables set VITE_API_URL="https://your-backend-domain.railway.app"
