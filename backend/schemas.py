@@ -74,6 +74,9 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+class TokenPair(Token):
+    refresh_token: str
+
 # Onboarding Schemas
 class OnboardingMovieRating(BaseModel):
     movie_id: int

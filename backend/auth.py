@@ -11,9 +11,11 @@ from .models import User
 # Security config
 SECRET_KEY = "your-secret-key-change-this-in-production"  # Change this!
 ALGORITHM = "HS256"
-# Extend session duration to reduce unexpected logouts while idle
-# Consider implementing refresh tokens for production security
-ACCESS_TOKEN_EXPIRE_MINUTES = 720  # 12 hours
+
+# Access tokens should be relatively short-lived; refresh tokens are longer-lived
+# Keep values configurable via env later if needed
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
+REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -24,15 +26,39 @@ def verify_password(plain_password, hashed_password):
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def _create_token(data: dict, expires_delta: timedelta) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+    expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a short‑lived access token."""
+    if not expires_delta:
+        expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {**data, "type": "access"}
+    return _create_token(payload, expires_delta)
+
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a long‑lived refresh token."""
+    if not expires_delta:
+        expires_delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {**data, "type": "refresh"}
+    return _create_token(payload, expires_delta)
+
+def verify_refresh_token(token: str) -> str:
+    """Return username (sub) if token is a valid refresh token; raise if invalid."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise JWTError("Invalid token type")
+        username = payload.get("sub")
+        if not username:
+            raise JWTError("Missing subject")
+        return username
+    except JWTError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token") from exc
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(

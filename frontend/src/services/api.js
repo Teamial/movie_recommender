@@ -30,21 +30,70 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Global 401 handler to avoid silent logout loops
+// Refresh logic: only force logout when /auth/me fails OR refresh also fails
+let isRefreshing = false;
+let pendingRequests = [];
+
+const processQueue = (error, token = null) => {
+  pendingRequests.forEach(({ resolve, reject }) => {
+    if (error) reject(error);
+    else resolve(token);
+  });
+  pendingRequests = [];
+};
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error?.config;
     const status = error?.response?.status;
-    if (status === 401) {
-      try {
-        localStorage.removeItem('token');
-      } catch {}
-      // Notify auth context and redirect to login if not already there
-      try {
-        window.dispatchEvent(new Event('auth-logout'));
-      } catch {}
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.href = '/login';
+
+    // If unauthorized, attempt refresh once (skip for login/refresh endpoints)
+    if (status === 401 && originalRequest && !originalRequest._retry) {
+      const url = String(originalRequest.url || '');
+      const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh');
+      if (!isAuthEndpoint) {
+        if (isRefreshing) {
+          // queue requests while refreshing
+          return new Promise((resolve, reject) => {
+            pendingRequests.push({ resolve, reject });
+          })
+            .then((token) => {
+              if (token) originalRequest.headers.Authorization = `Bearer ${token}`;
+              return api(originalRequest);
+            })
+            .catch((err) => Promise.reject(err));
+        }
+
+        originalRequest._retry = true;
+        isRefreshing = true;
+        try {
+          const refreshToken = localStorage.getItem('refresh_token');
+          if (!refreshToken) throw new Error('Missing refresh token');
+          const { data } = await api.post('/auth/refresh', null, { params: { refresh_token: refreshToken } });
+          const newAccess = data?.access_token;
+          if (!newAccess) throw new Error('No access token in refresh response');
+          localStorage.setItem('token', newAccess);
+          originalRequest.headers.Authorization = `Bearer ${newAccess}`;
+          processQueue(null, newAccess);
+          return api(originalRequest);
+        } catch (refreshErr) {
+          processQueue(refreshErr, null);
+          try {
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+          } catch {}
+          // Only redirect if the failing request was the auth check or if we are on protected pages
+          if (String(originalRequest.url || '').includes('/auth/me')) {
+            try { window.dispatchEvent(new Event('auth-logout')); } catch {}
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          }
+          return Promise.reject(refreshErr);
+        } finally {
+          isRefreshing = false;
+        }
       }
     }
     return Promise.reject(error);

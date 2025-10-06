@@ -39,6 +39,7 @@ export const AuthProvider = ({ children }) => {
         setUser(response.data);
       } catch (error) {
         localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
       }
     }
     setLoading(false);
@@ -51,6 +52,9 @@ export const AuthProvider = ({ children }) => {
     
     const response = await loginApi(formData);
     localStorage.setItem('token', response.data.access_token);
+    if (response.data.refresh_token) {
+      localStorage.setItem('refresh_token', response.data.refresh_token);
+    }
     
     const userResponse = await getCurrentUser();
     setUser(userResponse.data);
@@ -66,6 +70,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     setUser(null);
   };
 

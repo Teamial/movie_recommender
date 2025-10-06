@@ -9,11 +9,13 @@ from email.mime.multipart import MIMEMultipart
 import os
 from ..database import get_db
 from ..models import User, PasswordResetToken
-from ..schemas import UserCreate, UserResponse, Token, UserUpdate, PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
+from ..schemas import UserCreate, UserResponse, Token, TokenPair, UserUpdate, PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
 from ..auth import (
     get_password_hash,
     verify_password,
     create_access_token,
+    create_refresh_token,
+    verify_refresh_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     get_current_user
 )
@@ -51,7 +53,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=TokenPair)
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
@@ -74,8 +76,23 @@ def login(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+    refresh_token = create_refresh_token(data={"sub": user.username})
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+@router.post("/refresh", response_model=Token)
+def refresh_token_endpoint(
+    refresh_token: str,
+    db: Session = Depends(get_db)
+):
+    """Exchange refresh token for a new access token."""
+    username = verify_refresh_token(refresh_token)
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    new_access = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
+    return {"access_token": new_access, "token_type": "bearer"}
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(
