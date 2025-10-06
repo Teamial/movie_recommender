@@ -8,6 +8,7 @@ import json
 import logging
 from dotenv import load_dotenv
 from typing import List, Dict, Optional
+from urllib.parse import urlparse, urlunparse
 
 load_dotenv()
 
@@ -22,6 +23,22 @@ class MovieETLPipeline:
     def __init__(self, api_key, db_url):
         self.api_key = api_key
         self.base_url = "https://api.themoviedb.org/3"
+        # Normalize DATABASE_URL scheme for SQLAlchemy compatibility
+        try:
+            parsed = urlparse(db_url)
+            if parsed.scheme == 'postgres':
+                parsed = parsed._replace(scheme='postgresql')
+                db_url = urlunparse(parsed)
+                logger.info("Rewrote DATABASE_URL scheme postgres -> postgresql in movie_pipeline")
+            elif db_url.startswith('postgresql+psycopg2://'):
+                db_url = db_url.replace('postgresql+psycopg2://', 'postgresql://', 1)
+                logger.info("Converted DATABASE_URL from postgresql+psycopg2:// to postgresql:// in movie_pipeline")
+            elif db_url.startswith('postgres://'):
+                db_url = db_url.replace('postgres://', 'postgresql://', 1)
+                logger.info("Converted DATABASE_URL from postgres:// to postgresql:// in movie_pipeline")
+        except Exception as e:
+            logger.warning(f"Could not normalize DATABASE_URL in movie_pipeline: {e}")
+
         self.engine = create_engine(db_url)
         self.image_base = "https://image.tmdb.org/t/p"
         

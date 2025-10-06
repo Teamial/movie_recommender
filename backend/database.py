@@ -42,6 +42,11 @@ def normalize_database_url(raw_url: str | None) -> str:
             fixed = urlunparse(parsed)
             logger.info("Rewrote DATABASE_URL host.docker.internal -> 127.0.0.1 for local runtime")
             return fixed
+        # Normalize deprecated postgres:// scheme to postgresql://
+        if raw_url.startswith("postgres://"):
+            fixed_scheme = raw_url.replace("postgres://", "postgresql://", 1)
+            logger.info("Rewrote DATABASE_URL scheme postgres:// -> postgresql://")
+            return fixed_scheme
         return raw_url
     except Exception as e:
         logger.warning(f"Could not parse DATABASE_URL; using fallback. Error: {e}")
@@ -70,11 +75,22 @@ try:
         logger.error(f"psycopg2 not available: {e}")
         raise ImportError("psycopg2-binary is not installed or not accessible")
     
-    # Ensure DATABASE_URL uses correct format for SQLAlchemy
+    # Ensure DATABASE_URL uses correct format for SQLAlchemy (force postgresql scheme)
     db_url = DATABASE_URL
-    if db_url.startswith('postgresql+psycopg2://'):
-        db_url = db_url.replace('postgresql+psycopg2://', 'postgresql://')
-        logger.info("Converted DATABASE_URL from postgresql+psycopg2:// to postgresql://")
+    try:
+        parsed_url = urlparse(db_url)
+        if parsed_url.scheme == 'postgres':
+            parsed_url = parsed_url._replace(scheme='postgresql')
+            db_url = urlunparse(parsed_url)
+            logger.info("Rewrote DATABASE_URL scheme postgres -> postgresql via urlparse")
+        elif db_url.startswith('postgresql+psycopg2://'):
+            db_url = db_url.replace('postgresql+psycopg2://', 'postgresql://', 1)
+            logger.info("Converted DATABASE_URL from postgresql+psycopg2:// to postgresql://")
+        elif db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+            logger.info("Converted DATABASE_URL from postgres:// to postgresql://")
+    except Exception as e:
+        logger.warning(f"Could not parse DATABASE_URL for scheme fix: {e}")
     
     engine = create_engine(
         db_url,

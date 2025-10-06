@@ -54,6 +54,9 @@ RUN python -c "import psycopg2; print(f'psycopg2 version: {psycopg2.__version__}
 
 # Copy backend code
 COPY backend /app/backend
+# Also copy root-level pipeline module for scheduler imports
+COPY movie_pipeline.py /app/movie_pipeline.py
+COPY historical_movie_import.py /app/historical_movie_import.py
 
 # Make startup script executable
 RUN chmod +x /app/backend/start.sh

@@ -10,10 +10,20 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from dotenv import load_dotenv
 
-# Add parent directory to path to import movie_pipeline
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# Add project root to sys.path to import root-level modules in container
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
+
 from movie_pipeline import MovieETLPipeline
-from historical_movie_import import HistoricalMovieImporter
+
+# Optional historical importer; only schedule related jobs if import succeeds
+try:
+    from historical_movie_import import HistoricalMovieImporter
+    HAS_HISTORICAL_IMPORTER = True
+except Exception:
+    HistoricalMovieImporter = None  # type: ignore
+    HAS_HISTORICAL_IMPORTER = False
 
 load_dotenv()
 
@@ -38,7 +48,7 @@ class PipelineScheduler:
             raise ValueError("DATABASE_URL not found in environment")
         
         self.pipeline = MovieETLPipeline(self.tmdb_api_key, self.database_url)
-        self.historical_importer = HistoricalMovieImporter(self.tmdb_api_key, self.database_url)
+        self.historical_importer = HistoricalMovieImporter(self.tmdb_api_key, self.database_url) if HAS_HISTORICAL_IMPORTER else None
         self._setup_jobs()
     
     def _setup_jobs(self):
@@ -90,27 +100,29 @@ class PipelineScheduler:
         )
         logger.info("✓ Scheduled: Embedding refresh daily at 4:00 AM")
         
-        # Historical import: Every Monday at 1 AM (import recent movies from last 30 days)
-        self.scheduler.add_job(
-            func=self._historical_recent_update,
-            trigger=CronTrigger(day_of_week='mon', hour=1, minute=0),
-            id='historical_recent',
-            name='Historical Recent Update (Last 30 Days)',
-            replace_existing=True,
-            max_instances=1
-        )
-        logger.info("✓ Scheduled: Historical recent update on Mondays at 1:00 AM")
-        
-        # Historical batch import: Every first Sunday of month at 12 AM (import 5 years of movies)
-        self.scheduler.add_job(
-            func=self._historical_batch_import,
-            trigger=CronTrigger(day=1, day_of_week='sun', hour=0, minute=0),
-            id='historical_batch',
-            name='Historical Batch Import (5 Years)',
-            replace_existing=True,
-            max_instances=1
-        )
-        logger.info("✓ Scheduled: Historical batch import on first Sunday of month at 12:00 AM")
+        # Historical jobs (optional)
+        if HAS_HISTORICAL_IMPORTER and self.historical_importer is not None:
+            self.scheduler.add_job(
+                func=self._historical_recent_update,
+                trigger=CronTrigger(day_of_week='mon', hour=1, minute=0),
+                id='historical_recent',
+                name='Historical Recent Update (Last 30 Days)',
+                replace_existing=True,
+                max_instances=1
+            )
+            logger.info("✓ Scheduled: Historical recent update on Mondays at 1:00 AM")
+
+            self.scheduler.add_job(
+                func=self._historical_batch_import,
+                trigger=CronTrigger(day=1, day_of_week='sun', hour=0, minute=0),
+                id='historical_batch',
+                name='Historical Batch Import (5 Years)',
+                replace_existing=True,
+                max_instances=1
+            )
+            logger.info("✓ Scheduled: Historical batch import on first Sunday of month at 12:00 AM")
+        else:
+            logger.info("ℹ️ Historical importer not available; skipping historical jobs")
     
     def _quick_update(self):
         """Quick update with popular and trending movies"""

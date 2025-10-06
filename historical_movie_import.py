@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from movie_pipeline import MovieETLPipeline
+from urllib.parse import urlparse, urlunparse
 
 load_dotenv()
 
@@ -34,6 +35,19 @@ class HistoricalMovieImporter:
     
     def __init__(self, api_key: str, db_url: str):
         self.api_key = api_key
+        # Normalize DB URL scheme for SQLAlchemy
+        try:
+            parsed = urlparse(db_url)
+            if parsed.scheme == 'postgres':
+                parsed = parsed._replace(scheme='postgresql')
+                db_url = urlunparse(parsed)
+                logger.info("Rewrote DATABASE_URL scheme postgres -> postgresql in historical importer")
+            elif db_url.startswith('postgresql+psycopg2://'):
+                db_url = db_url.replace('postgresql+psycopg2://', 'postgresql://', 1)
+            elif db_url.startswith('postgres://'):
+                db_url = db_url.replace('postgres://', 'postgresql://', 1)
+        except Exception as e:
+            logger.warning(f"Could not normalize DATABASE_URL in historical importer: {e}")
         self.db_url = db_url
         self.base_url = "https://api.themoviedb.org/3"
         self.pipeline = MovieETLPipeline(api_key, db_url)
