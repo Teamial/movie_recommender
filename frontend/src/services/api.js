@@ -8,8 +8,11 @@ const resolveBaseURL = () => {
     // Fallback for local dev where a proxy is configured
     return '/api';
   }
-  // Absolute URL (http/https)
-  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/$/, '');
+  // Absolute URL (http/https) – also fix missing '//' if user set 'https:domain'
+  const fixedProto = /^https?:\/\//i.test(raw)
+    ? raw
+    : (/^https?:[^/]/i.test(raw) ? raw.replace(/^https?:/, (m) => m + '//') : raw);
+  if (/^https?:\/\//i.test(fixedProto)) return fixedProto.replace(/\/$/, '');
   // Ensure leading slash for same-origin paths
   return (raw.startsWith('/') ? raw : `/${raw}`).replace(/\/$/, '');
 };
