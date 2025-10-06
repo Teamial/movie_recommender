@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -62,15 +62,33 @@ if DATABASE_URL:
 
 # Create engine with connection pooling and error handling
 try:
+    # Ensure DATABASE_URL uses correct format for SQLAlchemy
+    db_url = DATABASE_URL
+    if db_url.startswith('postgresql+psycopg2://'):
+        db_url = db_url.replace('postgresql+psycopg2://', 'postgresql://')
+        logger.info("Converted DATABASE_URL from postgresql+psycopg2:// to postgresql://")
+    
     engine = create_engine(
-        DATABASE_URL,
+        db_url,
         pool_pre_ping=True,  # Verify connections before use
         pool_recycle=300,    # Recycle connections every 5 minutes
         echo=False           # Set to True for SQL debugging
     )
     logger.info("Database engine created successfully")
+    
+    # Test the connection to ensure psycopg2 is working
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT version()"))
+        version = result.fetchone()[0]
+        logger.info(f"PostgreSQL version: {version}")
+        
+except ImportError as e:
+    logger.error(f"Missing database driver: {e}")
+    logger.error("Make sure psycopg2-binary is installed and libpq5 system library is available")
+    raise
 except Exception as e:
     logger.error(f"Failed to create database engine: {e}")
+    logger.error(f"DATABASE_URL format: {db_url[:50]}...")
     raise
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
