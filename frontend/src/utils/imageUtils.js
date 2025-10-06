@@ -7,6 +7,9 @@
  * @param {string} tmdbUrl - The original TMDB image URL
  * @returns {string} - The proxied URL
  */
+// Prefer build-time API base if provided (Railway: set VITE_API_URL to backend URL)
+const API_BASE = (import.meta?.env?.VITE_API_URL || '').replace(/\/$/, '');
+
 export const getProxiedImageUrl = (tmdbUrlOrPath) => {
   if (!tmdbUrlOrPath) return null;
 
@@ -42,7 +45,10 @@ export const getProxiedImageUrl = (tmdbUrlOrPath) => {
   const tmdbPath = toPath(tmdbUrlOrPath);
   if (!tmdbPath) return null;
 
-  // Return our proxy URL via same-origin API gateway (works on mobile and prod)
+  // Use explicit API base if provided, else fall back to same-origin /api
+  if (API_BASE) {
+    return `${API_BASE}/proxy/image/${tmdbPath}`;
+  }
   return `/api/proxy/image/${tmdbPath}`;
 };
 
