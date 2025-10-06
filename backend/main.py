@@ -77,6 +77,7 @@ def health_check():
     return {"status": "healthy"}
 
 @app.get("/proxy/image/{path:path}")
+@app.get("/api/proxy/image/{path:path}")
 def proxy_image(path: str):
     """Proxy TMDB images to avoid CORS issues"""
     import requests
