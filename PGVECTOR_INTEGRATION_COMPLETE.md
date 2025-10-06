@@ -6,7 +6,7 @@ Successfully integrated **pgvector** into the movie recommender system for ultra
 ## ✅ What Was Implemented
 
 ### 1. Docker & Database Setup
-- ✅ Updated `docker-compose.yml` to use `pgvector/pgvector:pg16` image
+- ✅ Updated `docker-compose.yml` to use `pgvector/pgvector:pg17` image
 - ✅ Enabled pgvector extension in PostgreSQL
 - ✅ Created `embedding vector(384)` column in movies table
 - ✅ Created IVFFlat index for fast similarity search

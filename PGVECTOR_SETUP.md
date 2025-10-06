@@ -20,7 +20,7 @@ This guide will help you integrate **pgvector** into your movie recommender syst
 Your `docker-compose.yml` has been updated to use the pgvector-enabled PostgreSQL image:
 
 ```yaml
-image: pgvector/pgvector:pg16
+image: pgvector/pgvector:pg17
 ```
 
 Restart your database:

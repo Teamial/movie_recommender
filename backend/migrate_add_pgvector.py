@@ -118,7 +118,7 @@ def migrate_add_pgvector():
         print(f"\n❌ Migration failed: {e}")
         print("\nTroubleshooting:")
         print("   1. Ensure PostgreSQL with pgvector is running")
-        print("   2. Check docker-compose.yml uses 'pgvector/pgvector:pg16' image")
+        print("   2. Check docker-compose.yml uses 'pgvector/pgvector:pg17' image")
         print("   3. Verify database connection in .env file")
         sys.exit(1)
 
