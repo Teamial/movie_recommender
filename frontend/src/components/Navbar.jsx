@@ -19,7 +19,7 @@ const Navbar = () => {
       <div className="mx-auto max-w-6xl h-16 px-4 flex items-center justify-between gap-4">
         <Link to="/" className="flex items-center gap-2 font-semibold text-foreground hover:text-primary transition-colors">
           <Film className="w-6 h-6 text-primary" />
-          <span className="text-lg tracking-tight">Cinemate</span>
+          <span className="text-lg tracking-tight">Cineamate</span>
         </Link>
 
         {/* Desktop Navigation */}
@@ -119,7 +119,7 @@ const Navbar = () => {
           </SheetTrigger>
           <SheetContent side="right" className="w-[85vw] sm:max-w-sm p-6">
             <div className="flex flex-col gap-4">
-              <h3 className="font-semibold text-lg mb-2">Cinemate</h3>
+              <h3 className="font-semibold text-lg mb-2">Cineamate</h3>
 
               <Button
                 variant="outline"

@@ -1,4 +1,4 @@
-# Cinemate - Popmelt "Clod" Design System Implementation
+# Cineamate - Popmelt "Clod" Design System Implementation
 
 ## Overview
 This movie recommender app now features the **Clod** design system from Popmelt - a warm, beige-toned aesthetic with sophisticated typography and rounded elements.

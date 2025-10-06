@@ -166,7 +166,7 @@ const Onboarding = () => {
   const steps = [
     {
       id: 'welcome',
-      title: 'Welcome to Cinemate',
+      title: 'Welcome to Cineamate',
       component: <WelcomeStep />
     },
     {

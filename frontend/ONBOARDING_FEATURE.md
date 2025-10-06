@@ -8,7 +8,7 @@ A comprehensive multi-step onboarding experience that guides new users through s
 ### 🎯 **5-Step Wizard Process**
 
 #### **Step 1: Welcome Screen**
-- Introduces Cinemate and its key benefits
+- Introduces Cineamate and its key benefits
 - Highlights three main features:
   - **Smart Recommendations**: AI-powered suggestions
   - **Track Your Favorites**: Build watchlists and rate movies
