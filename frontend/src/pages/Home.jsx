@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, TrendingUp, Star, Clock } from 'lucide-react';
 import { getMovies, getFavorites, getWatchlist, getUserRatings } from '../services/api';
@@ -11,6 +11,7 @@ const Home = () => {
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debounceRef = useRef(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
@@ -23,8 +24,15 @@ const Home = () => {
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
-    fetchMovies(signal);
-    return () => controller.abort();
+    // Debounce search/sort/page changes to avoid spamming the API while typing
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchMovies(signal);
+    }, 300);
+    return () => {
+      clearTimeout(debounceRef.current);
+      controller.abort();
+    };
   }, [page, search, sortBy]);
 
   useEffect(() => {

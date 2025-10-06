@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Heart, Bookmark, Star, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { addFavorite, removeFavorite, addToWatchlist, removeFromWatchlist, createRating, getThumbsStatus, toggleThumbsUp, toggleThumbsDown } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +14,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
   const [showModal, setShowModal] = useState(false);
   const [thumbsUp, setThumbsUp] = useState(false);
   const [thumbsDown, setThumbsDown] = useState(false);
+  const hasLoadedThumbsRef = useRef(false);
 
   // Update local state when props change
   useEffect(() => {
@@ -28,22 +29,19 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
     setLocalRating(userRating);
   }, [userRating]);
 
-  // Fetch thumbs up/down status when component mounts
-  useEffect(() => {
-    const fetchThumbsStatus = async () => {
-      if (!user) return;
-      
-      try {
-        const response = await getThumbsStatus(movie.id);
-        setThumbsUp(response.data.thumbs_up);
-        setThumbsDown(response.data.thumbs_down);
-      } catch (error) {
-        console.error('Error fetching thumbs status:', error);
-      }
-    };
-
-    fetchThumbsStatus();
-  }, [user, movie.id]);
+  // Lazy-load thumbs status on first hover to avoid N requests during search results render
+  const ensureThumbsStatus = async () => {
+    if (!user || hasLoadedThumbsRef.current) return;
+    try {
+      const response = await getThumbsStatus(movie.id);
+      setThumbsUp(response.data.thumbs_up);
+      setThumbsDown(response.data.thumbs_down);
+    } catch (error) {
+      // Non-critical; don't spam console
+    } finally {
+      hasLoadedThumbsRef.current = true;
+    }
+  };
 
   const handleFavorite = async (e) => {
     e.preventDefault();
@@ -132,6 +130,7 @@ const MovieCard = ({ movie, isFavorite, isInWatchlist, userRating, onUpdate }) =
       <div 
         className="bg-card rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer border border-border/50"
         onClick={() => setShowModal(true)}
+        onMouseEnter={ensureThumbsStatus}
       >
         <div className="relative aspect-[2/3]">
           {getPosterUrl(movie) ? (
