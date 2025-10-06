@@ -21,7 +21,10 @@ const Home = () => {
   const { user } = useAuth();
 
   useEffect(() => {
-    fetchMovies();
+    const controller = new AbortController();
+    const { signal } = controller;
+    fetchMovies(signal);
+    return () => controller.abort();
   }, [page, search, sortBy]);
 
   useEffect(() => {
@@ -30,7 +33,7 @@ const Home = () => {
     }
   }, [user]);
 
-  const fetchMovies = async () => {
+  const fetchMovies = async (signal) => {
     try {
       setLoading(true);
       const response = await getMovies({ 
@@ -38,10 +41,14 @@ const Home = () => {
         page_size: 20,
         search: search || undefined,
         sort_by: sortBy
-      });
+      }, { signal });
       setMovies(response.data.movies);
       setTotalPages(Math.ceil(response.data.total / response.data.page_size));
     } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        // request was aborted due to a newer search; ignore
+        return;
+      }
       console.error('Error fetching movies:', error);
     } finally {
       setLoading(false);

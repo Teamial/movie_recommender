@@ -65,7 +65,8 @@ export const resetPassword = (token, newPassword) => api.post('/auth/reset-passw
 });
 
 // Movies
-export const getMovies = (params) => api.get('/movies/', { params });
+// Accept optional axios config (e.g., { signal }) so callers can cancel in-flight requests
+export const getMovies = (params, config = {}) => api.get('/movies/', { params, ...config });
 export const getMovie = (id) => api.get(`/movies/${id}`);
 export const getTopRated = (limit = 10) => api.get(`/movies/top-rated?limit=${limit}`);
 export const getGenres = () => api.get('/movies/genres/list');
