@@ -441,9 +441,10 @@ class MovieETLPipeline:
         """Log pipeline execution details"""
         try:
             with self.engine.connect() as conn:
+                # Explicitly set run_date to avoid NOT NULL errors on pre-existing schemas
                 query = text("""
-                    INSERT INTO pipeline_runs (movies_processed, status, source_categories, duration_seconds)
-                    VALUES (:movies_count, :status, :categories, :duration)
+                    INSERT INTO pipeline_runs (run_date, movies_processed, status, source_categories, duration_seconds)
+                    VALUES (CURRENT_TIMESTAMP, :movies_count, :status, :categories, :duration)
                 """)
                 conn.execute(query, {
                     'movies_count': movies_count,
@@ -563,10 +564,10 @@ class MovieETLPipeline:
         logger.info("🔍 Running full enrichment...")
         self.run(
             categories=['popular', 'top_rated', 'upcoming'],
-            pages_per_category=5,
+            pages_per_category=10,  # Fetch more pages per category
             include_trending=True,
             enrich_data=True,
-            max_enrichment=100,
+            max_enrichment=300,  # Enrich more movies per run
             incremental=True
         )
 
